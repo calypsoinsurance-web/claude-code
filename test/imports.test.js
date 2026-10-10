@@ -324,3 +324,51 @@ test('list-type import options are accepted as comma-separated strings too', asy
   assert.equal(r.status, 200); assert.equal(r.body.counts.created, 1); assert.equal(r.body.counts.excluded, 1);
   await t.close();
 });
+
+test('customers store first name, last name, state and address: manual entry, edit, search, import, export, public lead form', async () => {
+  const t = await setup();
+  const bad = await t.call('POST', '/api/customers', { first_name: 'Ann', email: 'a1@example.test' });
+  assert.equal(bad.status, 400); // both names required
+  assert.equal((await t.call('POST', '/api/customers', { first_name: 'Ann', last_name: 'Lee', state: 'NYC' })).status, 400);
+  const c = await t.call('POST', '/api/customers', { first_name: 'Ann', last_name: 'Lee', email: 'ann@example.test', state: 'ny', address_line1: '1 Sample Rd', address_line2: 'Apt 2', city: 'Sampletown', postal_code: '10001' });
+  assert.equal(c.status, 201);
+  let d = (await t.call('GET', `/api/customers/${c.body.id}`)).body.customer;
+  assert.deepEqual([d.name, d.first_name, d.last_name, d.state, d.address_line1, d.address_line2, d.city, d.postal_code], ['Ann Lee', 'Ann', 'Lee', 'NY', '1 Sample Rd', 'Apt 2', 'Sampletown', '10001']);
+  assert.equal((await t.call('PATCH', `/api/customers/${c.body.id}`, { last_name: 'Smith', city: 'Newtown' })).status, 200);
+  d = (await t.call('GET', `/api/customers/${c.body.id}`)).body.customer;
+  assert.deepEqual([d.name, d.last_name, d.city, d.address_line1], ['Ann Smith', 'Smith', 'Newtown', '1 Sample Rd']);
+  assert.equal((await t.call('GET', '/api/customers?q=newtown')).body.total, 1);
+  assert.equal((await t.call('GET', '/api/customers?q=1 sample')).body.total, 1);
+  const csv = (await t.call('GET', '/api/export/customers.csv')).body;
+  assert.match(csv, /first_name,last_name,email,phone,address_line1,address_line2,city,state,postal_code/); assert.match(csv, /Ann,Smith/);
+
+  // import with separate first/last + address columns
+  const H = ['CustId', 'First', 'Last', 'Email', 'Addr', 'City', 'State', 'Zip', 'Pet', 'Species', 'QuoteId', 'QuoteDate', 'Premium', 'Freq'];
+  await runImport(t, 'quotes', [H, ['C7', 'Bo', 'Ray', 'bo@example.test', '9 Test Ave', 'Testburg', 'nj', '07001', 'Rex', 'dog', 'Q7', '2026-02-01', '40', 'monthly']],
+    { provider_customer_id: 'CustId', customer_first_name: 'First', customer_last_name: 'Last', customer_email: 'Email', customer_address_line1: 'Addr', customer_city: 'City', customer_state: 'State', customer_postal_code: 'Zip', pet_name: 'Pet', species: 'Species', provider_quote_id: 'QuoteId', quote_date: 'QuoteDate', premium: 'Premium', payment_frequency: 'Freq' }, { date_format: 'iso' });
+  const bo = t.db.prepare("SELECT * FROM customers WHERE email='bo@example.test'").get();
+  assert.deepEqual([bo.name, bo.first_name, bo.last_name, bo.state, bo.address_line1, bo.city, bo.postal_code], ['Bo Ray', 'Bo', 'Ray', 'NJ', '9 Test Ave', 'Testburg', '07001']);
+  // a later report with a full-name column only does NOT split names; it fills only blanks and never overwrites
+  await runImport(t, 'quotes', [['CustId', 'Name', 'Email', 'Pet', 'Species', 'QuoteId', 'QuoteDate', 'Premium', 'Freq'], ['C7', 'Robert Ray', 'bo@example.test', 'Rex', 'dog', 'Q8', '2026-02-02', '41', 'monthly']],
+    { provider_customer_id: 'CustId', customer_name: 'Name', customer_email: 'Email', pet_name: 'Pet', species: 'Species', provider_quote_id: 'QuoteId', quote_date: 'QuoteDate', premium: 'Premium', payment_frequency: 'Freq' }, { date_format: 'iso' });
+  assert.equal(t.db.prepare("SELECT name FROM customers WHERE email='bo@example.test'").get().name, 'Bo Ray');
+  assert.equal(t.db.prepare("SELECT COUNT(*) n FROM customers WHERE lower(email)='bo@example.test'").get().n, 1);
+  // a full-name-only import leaves first/last empty (no guessing)
+  await runImport(t, 'quotes', [['Name', 'Email', 'Pet', 'Species', 'QuoteId', 'QuoteDate', 'Premium', 'Freq'], ['Cy Dee', 'cy@example.test', 'Max', 'cat', 'Q9', '2026-02-03', '30', 'monthly']],
+    { customer_name: 'Name', customer_email: 'Email', pet_name: 'Pet', species: 'Species', provider_quote_id: 'QuoteId', quote_date: 'QuoteDate', premium: 'Premium', payment_frequency: 'Freq' }, { date_format: 'iso' });
+  const cy = t.db.prepare("SELECT * FROM customers WHERE email='cy@example.test'").get();
+  assert.deepEqual([cy.name, cy.first_name, cy.last_name], ['Cy Dee', null, null]);
+  await t.close();
+});
+
+test('public lead form accepts first/last name and address; rejects a missing last name or bad ZIP', async () => {
+  const t = await start(); t.setSetting('public_form_enabled', 'true'); t.setSetting('public_disclosure_text', 'n');
+  const body = (c, key = 'k'.repeat(30)) => ({ idempotency_key: key, consent: true, customer: { email: 'lead@example.test', ...c }, pets: [{ name: 'Rex', species: 'dog' }] });
+  assert.equal((await t.call('POST', '/api/public/quote', body({ first_name: 'Lee' }), { noCookie: true })).status, 400);
+  assert.equal((await t.call('POST', '/api/public/quote', body({ first_name: 'Lee', last_name: 'Ng', postal_code: '!!' }), { noCookie: true })).status, 400);
+  const ok = await t.call('POST', '/api/public/quote', body({ first_name: 'Lee', last_name: 'Ng', address_line1: '5 Lead Ln', city: 'Leadville', state: 'ny', postal_code: '10002' }), { noCookie: true });
+  assert.equal(ok.status, 200);
+  const c = t.db.prepare('SELECT * FROM customers').get();
+  assert.deepEqual([c.name, c.first_name, c.last_name, c.address_line1, c.city, c.state, c.postal_code], ['Lee Ng', 'Lee', 'Ng', '5 Lead Ln', 'Leadville', 'NY', '10002']);
+  await t.close();
+});

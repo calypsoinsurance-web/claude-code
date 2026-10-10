@@ -13,8 +13,8 @@ const norm = crm.norm;
 // No provider report format has been verified, so nothing is auto-trusted: suggestions are only hints.
 // ---------------------------------------------------------------------------------------------------
 const CUSTOMER_FIELDS = {
-  provider_customer_id: 'Provider customer ID', customer_name: 'Customer name', customer_email: 'Customer email',
-  customer_phone: 'Customer phone', customer_state: 'Customer state',
+  provider_customer_id: 'Provider customer ID', customer_first_name: 'Customer first name', customer_last_name: 'Customer last name', customer_name: 'Customer full name (only if there are no separate first/last columns)', customer_email: 'Customer email',
+  customer_phone: 'Customer phone', customer_address_line1: 'Address line 1', customer_address_line2: 'Address line 2', customer_city: 'City', customer_state: 'Customer state', customer_postal_code: 'ZIP / postal code',
 };
 const PET_FIELDS = {
   provider_pet_id: 'Provider pet ID', pet_name: 'Pet name', species: 'Dog or cat', breed: 'Breed', pet_age: 'Pet age (as recorded)',
@@ -51,7 +51,7 @@ const SYNONYMS = {
   ad_id: ['ad id'], ad_name: ['ad name', 'ad'], account_id: ['account id', 'customer id'], currency: ['currency'],
   channel: ['platform', 'publisher platform'], network: ['network'], placement: ['placement', 'platform position'],
   customer_email: ['email', 'customer email', 'email address'], customer_name: ['name', 'customer name', 'full name'], customer_phone: ['phone', 'phone number'],
-  customer_state: ['state'], provider_customer_id: ['customer id', 'customer number'], pet_name: ['pet name', 'pet'], species: ['species', 'pet type', 'type'],
+  customer_state: ['state'], customer_first_name: ['first name', 'firstname', 'first'], customer_last_name: ['last name', 'lastname', 'last', 'surname'], customer_address_line1: ['address', 'address 1', 'address line 1', 'street', 'street address'], customer_address_line2: ['address 2', 'address line 2', 'apt', 'unit'], customer_city: ['city'], customer_postal_code: ['zip', 'zip code', 'postal code', 'postcode'], provider_customer_id: ['customer id', 'customer number'], pet_name: ['pet name', 'pet'], species: ['species', 'pet type', 'type'],
   breed: ['breed'], pet_age: ['age', 'pet age'], provider_pet_id: ['pet id'], provider_quote_id: ['quote id', 'quote number'], quote_date: ['quote date', 'date quoted', 'created'],
   premium: ['premium', 'monthly premium', 'price'], payment_frequency: ['payment frequency', 'frequency', 'billing frequency'], quote_status: ['quote status', 'status'],
   policy_number: ['policy number', 'policy #', 'policy#', 'policy no', 'policy'], carrier: ['carrier', 'underwriter'], policy_status: ['policy status', 'status'],
@@ -148,7 +148,7 @@ function normalizeRow(kind, raw, mapping, o) {
     if (v === undefined) throw new Error(`${FIELDS[kind][f]}: "${g(f)}" is not a whole number`);
     return v; // blank stays null (missing), never 0
   };
-  const cust = () => ({ provider_customer_id: norm(g('provider_customer_id')), name: norm(g('customer_name')), email: crm.normEmail(g('customer_email')), phone: norm(g('customer_phone')), state: norm(g('customer_state')) });
+  const cust = () => ({ provider_customer_id: norm(g('provider_customer_id')), first_name: norm(g('customer_first_name')), last_name: norm(g('customer_last_name')), address_line1: norm(g('customer_address_line1')), address_line2: norm(g('customer_address_line2')), city: norm(g('customer_city')), postal_code: norm(g('customer_postal_code')), name: norm(g('customer_name')), email: crm.normEmail(g('customer_email')), phone: norm(g('customer_phone')), state: norm(g('customer_state')) });
   const pet = () => {
     const sp = g('species').toLowerCase();
     return { provider_pet_id: norm(g('provider_pet_id')), name: norm(g('pet_name')), species: sp === 'dog' || sp === 'cat' ? sp : null, species_raw: sp || null, breed: norm(g('breed')), age_as_recorded: norm(g('pet_age')) };

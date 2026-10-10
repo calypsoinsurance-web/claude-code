@@ -1,3 +1,3 @@
-Customer ID,Name,Email,Pet ID,Pet name,Species,Policy number,Carrier,Policy status,Issue date,Effective date,Cancellation date,Monthly premium,Payment frequency,Originating quote ID
-SAMPLE-C1,Sample Person One,sample1@example.invalid,SAMPLE-P1,Sample Dog,dog,SAMPLE-POL-1,SampleCarrier,Active,2026-01-10,2026-01-11,,41.50,monthly,SAMPLE-Q1
-SAMPLE-C2,Sample Person Two,sample2@example.invalid,SAMPLE-P3,Sample Pup,dog,SAMPLE-POL-2,SampleCarrier,Cancelled,2026-01-12,2026-01-13,2026-02-20,55.25,monthly,
+Customer ID,First name,Last name,Email,Address,City,State,ZIP,Pet ID,Pet name,Species,Policy number,Carrier,Policy status,Issue date,Effective date,Cancellation date,Monthly premium,Payment frequency,Originating quote ID
+SAMPLE-C1,Sample,One,sample1@example.invalid,1 Sample Road,Sampletown,NY,10001,SAMPLE-P1,Sample Dog,dog,SAMPLE-POL-1,SampleCarrier,Active,2026-01-10,2026-01-11,,41.50,monthly,SAMPLE-Q1
+SAMPLE-C2,Sample,Two,sample2@example.invalid,2 Example Ave,Exampleburg,NJ,07001,SAMPLE-P3,Sample Pup,dog,SAMPLE-POL-2,SampleCarrier,Cancelled,2026-01-12,2026-01-13,2026-02-20,55.25,monthly,

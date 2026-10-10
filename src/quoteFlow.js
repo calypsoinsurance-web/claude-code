@@ -21,8 +21,11 @@ function validate(input) {
   const key = str(input.idempotency_key, 100);
   if (!/^[A-Za-z0-9_-]{22,100}$/.test(key)) throw new ValidationError('A valid idempotency_key (random, 22+ characters) is required');
   const c = input.customer || {};
-  const customer = { name: str(c.name, 120), email: str(c.email, 320).toLowerCase(), phone: str(c.phone, 40), state: str(c.state, 2).toUpperCase() };
-  if (!customer.name) throw new ValidationError('Name is required');
+  const customer = { first_name: str(c.first_name, 80), last_name: str(c.last_name, 80), name: str(c.name, 120), email: str(c.email, 320).toLowerCase(), phone: str(c.phone, 40), state: str(c.state, 2).toUpperCase(),
+    address_line1: str(c.address_line1, 120), address_line2: str(c.address_line2, 120), city: str(c.city, 80), postal_code: str(c.postal_code, 12) };
+  if (customer.first_name || customer.last_name) { if (!customer.first_name || !customer.last_name) throw new ValidationError('Both first name and last name are required'); customer.name = `${customer.first_name} ${customer.last_name}`; }
+  if (!customer.name) throw new ValidationError('First and last name are required');
+  if (customer.postal_code && !/^[A-Za-z0-9 -]{3,12}$/.test(customer.postal_code)) throw new ValidationError('ZIP / postal code looks invalid');
   if (!EMAIL_RE.test(customer.email)) throw new ValidationError('A valid email is required');
   if (customer.state && !/^[A-Z]{2}$/.test(customer.state)) throw new ValidationError('State must be a 2-letter code');
   if (!Array.isArray(input.pets) || input.pets.length < 1 || input.pets.length > 5) throw new ValidationError('Provide 1 to 5 pets');

@@ -108,14 +108,14 @@ function privateRouter(db, transport, cfg) {
   r.get('/customers', (req, res) => {
     const q = `%${String(req.query.q || '').trim().toLowerCase()}%`;
     const page = Math.max(1, Number(req.query.page) || 1); const size = 25;
-    const where = ['(lower(c.name) LIKE ? OR lower(coalesce(c.email,\'\')) LIKE ? OR coalesce(c.phone,\'\') LIKE ? OR lower(coalesce(c.provider_customer_id,\'\')) LIKE ?)']; const params = [q, q, q, q];
+    const where = ['(lower(c.name) LIKE ? OR lower(coalesce(c.email,\'\')) LIKE ? OR coalesce(c.phone,\'\') LIKE ? OR lower(coalesce(c.provider_customer_id,\'\')) LIKE ? OR lower(coalesce(c.address_line1,\'\')) LIKE ? OR lower(coalesce(c.city,\'\')) LIKE ? OR coalesce(c.postal_code,\'\') LIKE ?)']; const params = [q, q, q, q, q, q, q];
     if (req.query.state) { where.push('c.state = ?'); params.push(String(req.query.state).toUpperCase()); }
     if (req.query.source) { where.push('c.first_source_type = ?'); params.push(String(req.query.source)); }
     if (req.query.has_policy === 'yes') where.push('EXISTS (SELECT 1 FROM policies p WHERE p.customer_id=c.id AND p.is_issued=1)');
     if (req.query.has_policy === 'no') where.push('NOT EXISTS (SELECT 1 FROM policies p WHERE p.customer_id=c.id AND p.is_issued=1)');
     const w = where.join(' AND ');
     const total = db.prepare(`SELECT COUNT(*) n FROM customers c WHERE ${w}`).get(...params).n;
-    const rows = db.prepare(`SELECT c.id,c.name,c.email,c.phone,c.state,c.first_source_type,c.first_source_platform,c.created_at,
+    const rows = db.prepare(`SELECT c.id,c.name,c.first_name,c.last_name,c.email,c.phone,c.state,c.city,c.postal_code,c.first_source_type,c.first_source_platform,c.created_at,
       (SELECT COUNT(*) FROM pets WHERE customer_id=c.id) pets, (SELECT COUNT(*) FROM quotes WHERE customer_id=c.id) quotes,
       (SELECT COUNT(*) FROM policies WHERE customer_id=c.id AND is_issued=1) policies
       FROM customers c WHERE ${w} ORDER BY c.created_at DESC, c.id DESC LIMIT ? OFFSET ?`).all(...params, size, (page - 1) * size);
@@ -134,12 +134,25 @@ function privateRouter(db, transport, cfg) {
       visits: db.prepare('SELECT id,visited_at,source_type,platform,utm_source,utm_medium,utm_campaign,utm_content,referrer FROM visits WHERE customer_id=? ORDER BY visited_at').all(id),
     });
   });
+  const STATE_RE = /^[A-Za-z]{2}$/;
+  const customerInput = (b, cur) => {
+    const pick = (k) => (k in b ? crm.norm(b[k]) : (cur ? cur[k] : null));
+    const out = { first_name: pick('first_name'), last_name: pick('last_name'), phone: pick('phone'), state: pick('state'), address_line1: pick('address_line1'), address_line2: pick('address_line2'), city: pick('city'), postal_code: pick('postal_code') };
+    if (out.state && !STATE_RE.test(out.state)) throw bad('State must be a 2-letter code');
+    if (out.postal_code && !/^[A-Za-z0-9 -]{3,12}$/.test(out.postal_code)) throw bad('ZIP / postal code looks invalid');
+    for (const [k, v] of Object.entries(out)) if (v && String(v).length > 120) throw bad(`${k} is too long`);
+    out.state = out.state ? out.state.toUpperCase() : null;
+    out.name = crm.displayName({ first_name: out.first_name, last_name: out.last_name, name: 'name' in b ? b.name : (cur ? cur.name : null) });
+    return out;
+  };
   r.post('/customers', (req, res) => {
     const b = req.body || {};
-    if (!String(b.name || '').trim()) throw bad('Name is required');
+    const c = customerInput(b, null);
+    if (c.name === '(no name)') throw bad('First and last name are required');
+    if ((c.first_name && !c.last_name) || (!c.first_name && c.last_name)) throw bad('Enter both first and last name');
     const email = crm.normEmail(b.email);
     if (email && db.prepare('SELECT 1 FROM customers WHERE email=?').get(email)) throw bad('A customer with this email already exists', 409);
-    const id = crm.createCustomer(db, { name: b.name, email, phone: b.phone, state: b.state });
+    const id = crm.createCustomer(db, { ...c, email });
     if (b.notes) db.prepare('UPDATE customers SET notes=? WHERE id=?').run(String(b.notes).slice(0, 5000), id);
     res.status(201).json({ id });
   });
@@ -149,8 +162,10 @@ function privateRouter(db, transport, cfg) {
     if (!cur) throw bad('Customer not found', 404);
     const email = 'email' in b ? crm.normEmail(b.email) : cur.email;
     if (email && email !== cur.email && db.prepare('SELECT 1 FROM customers WHERE email=? AND id!=?').get(email, id)) throw bad('Another customer already uses this email', 409);
-    db.prepare('UPDATE customers SET name=?, email=?, phone=?, state=?, notes=?, updated_at=? WHERE id=?')
-      .run(String(b.name ?? cur.name).trim() || cur.name, email, 'phone' in b ? crm.norm(b.phone) : cur.phone, 'state' in b ? crm.norm(b.state) : cur.state, 'notes' in b ? String(b.notes).slice(0, 5000) : cur.notes, now(), id);
+    const c = customerInput(b, cur);
+    if (('first_name' in b || 'last_name' in b) && ((c.first_name && !c.last_name) || (!c.first_name && c.last_name))) throw bad('Enter both first and last name');
+    db.prepare('UPDATE customers SET name=?, first_name=?, last_name=?, email=?, phone=?, state=?, address_line1=?, address_line2=?, city=?, postal_code=?, notes=?, updated_at=? WHERE id=?')
+      .run(c.name === '(no name)' ? cur.name : c.name, c.first_name, c.last_name, email, c.phone, c.state, c.address_line1, c.address_line2, c.city, c.postal_code, 'notes' in b ? String(b.notes).slice(0, 5000) : cur.notes, now(), id);
     res.json({ ok: true });
   });
   r.post('/customers/:id/pets', (req, res) => {
@@ -292,7 +307,7 @@ function privateRouter(db, transport, cfg) {
 
   // ---------- CSV exports ----------
   const EXPORTS = {
-    customers: ['SELECT id,provider_customer_id,name,email,phone,state,first_source_type,first_source_platform,notes,created_at,updated_at FROM customers ORDER BY id'],
+    customers: ['SELECT id,provider_customer_id,name,first_name,last_name,email,phone,address_line1,address_line2,city,state,postal_code,first_source_type,first_source_platform,notes,created_at,updated_at FROM customers ORDER BY id'],
     pets: ['SELECT * FROM pets ORDER BY id'],
     quotes: ['SELECT id,customer_id,pet_id,provider,provider_quote_id,quoted_at,quoted_date,premium_cents,payment_frequency,status,source,attribution_snapshot_json FROM quotes ORDER BY id'],
     policies: ['SELECT * FROM policies ORDER BY id'],

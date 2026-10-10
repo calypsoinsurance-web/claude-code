@@ -26,10 +26,19 @@ function matchCustomer(db, { provider_customer_id, email }) {
   return { status: 'none' };
 }
 
+// Display name: "First Last" when either part is known, else the single supplied name. Names are never split by guessing.
+function displayName(c) {
+  const f = norm(c.first_name); const l = norm(c.last_name);
+  if (f || l) return [f, l].filter(Boolean).join(' ');
+  return norm(c.name) || '(no name)';
+}
+const ADDRESS_FIELDS = ['address_line1', 'address_line2', 'city', 'postal_code'];
+
 function createCustomer(db, c, firstTouch) {
   const t = now();
-  const r = db.prepare(`INSERT INTO customers(provider_customer_id,name,email,phone,state,first_source_type,first_source_platform,first_touch_json,created_at,updated_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?)`).run(norm(c.provider_customer_id), norm(c.name) || '(no name)', normEmail(c.email), norm(c.phone), norm(c.state),
+  const r = db.prepare(`INSERT INTO customers(provider_customer_id,name,first_name,last_name,email,phone,state,address_line1,address_line2,city,postal_code,first_source_type,first_source_platform,first_touch_json,created_at,updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(norm(c.provider_customer_id), displayName(c), norm(c.first_name), norm(c.last_name), normEmail(c.email), norm(c.phone), norm(c.state) ? String(c.state).trim().toUpperCase() : null,
+    norm(c.address_line1), norm(c.address_line2), norm(c.city), norm(c.postal_code),
     firstTouch ? firstTouch.source_type : null, firstTouch ? firstTouch.platform : null, firstTouch ? JSON.stringify(firstTouch) : null, t, t);
   return Number(r.lastInsertRowid);
 }
@@ -41,7 +50,10 @@ function fillCustomerBlanks(db, id, c) {
   if (!cur.provider_customer_id && norm(c.provider_customer_id)) upd.provider_customer_id = norm(c.provider_customer_id);
   if (!cur.email && normEmail(c.email)) upd.email = normEmail(c.email);
   if (!cur.phone && norm(c.phone)) upd.phone = norm(c.phone);
-  if (!cur.state && norm(c.state)) upd.state = norm(c.state);
+  if (!cur.state && norm(c.state)) upd.state = String(c.state).trim().toUpperCase();
+  for (const f of ['first_name', 'last_name', ...ADDRESS_FIELDS]) if (!cur[f] && norm(c[f])) upd[f] = norm(c[f]);
+  if (upd.first_name || upd.last_name) upd.name = displayName({ first_name: upd.first_name || cur.first_name, last_name: upd.last_name || cur.last_name });
+  else if (cur.name === '(no name)' && norm(c.name)) upd.name = norm(c.name);
   const keys = Object.keys(upd);
   if (!keys.length) return;
   db.prepare(`UPDATE customers SET ${keys.map((k) => `${k}=?`).join(',')}, updated_at=? WHERE id=?`).run(...keys.map((k) => upd[k]), now(), id);
@@ -67,4 +79,4 @@ function quoteDedupeKey(provider, providerQuoteId, fallbackParts) {
   return `${provider}|noid|${sha(fallbackParts.join('|'))}`;
 }
 
-module.exports = { matchCustomer, createCustomer, fillCustomerBlanks, findOrCreatePet, quoteDedupeKey, norm, normEmail, sha };
+module.exports = { displayName, ADDRESS_FIELDS, matchCustomer, createCustomer, fillCustomerBlanks, findOrCreatePet, quoteDedupeKey, norm, normEmail, sha };

@@ -26,7 +26,7 @@
     $('go').disabled = true;
     fetch('/api/public/quote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
       idempotency_key: key, visitor_id: vid, consent: true, website: $('website').value,
-      customer: { name: $('name').value, email: $('email').value, phone: $('phone').value, state: $('state').value }, pets: pets }) })
+      customer: { first_name: $('first').value, last_name: $('last').value, email: $('email').value, phone: $('phone').value, address_line1: $('addr1').value, address_line2: $('addr2').value, city: $('city').value, state: $('state').value, postal_code: $('zip').value }, pets: pets }) })
       .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
       .then(function (x) {
         $('go').disabled = false;

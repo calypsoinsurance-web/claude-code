@@ -8,7 +8,7 @@ A small, private, single-user CRM and advertising dashboard for pet insurance (b
 
 ## What it does
 - **Dashboard** – ad spend, impressions, link clicks, CTR, CPC; unique quoted customers; issued policies and unique buying customers (kept separate); cost per quoted customer / issued policy / buying customer; commission (expected $150 per issued policy, receipts, reversals, adjustments, net); freshness, tracking coverage, unattributed outcomes; calendar activity and an acquisition view (off until you approve its rules); CSV export.
-- **Customers** – customers, multiple pets, quote history, policies, attribution history, notes, follow-ups.
+- **Customers** – first and last name, address, state, email and phone (editable), multiple pets, quote history, policies, attribution history, notes, follow-ups.
 - **Advertising** – campaign / channel tables and imported records. Meta is shown combined unless the report has a Facebook/Instagram breakdown.
 - **Imports** – CSV/XLSX for advertising, quotes, policies and commission statements: column mapping, preview, validation, row errors, duplicate-safe re-imports, history, review queues.
 - **Follow-ups** – due/overdue lists, editable dates, completion, reminder emails to you only.
@@ -32,7 +32,7 @@ npm run demo          # runs the app on it; every page shows a purple DEMO DATA 
 Your real database is `data/crm.sqlite` and is never touched by the demo.
 
 ### Run the tests
-`npm test` (61 automated tests: calculations, imports, attribution, security, quote retries, reminders).
+`npm test` (63 automated tests: calculations, imports, attribution, security, quote retries, reminders).
 
 ## Getting your data in
 1. **Imports → New import**, pick the type, choose your file, match columns, set the "what the file means" options, **Preview** (nothing saved), then **Commit**.

@@ -3,7 +3,7 @@ import { h, api, table, field, banner, cents, fmtTs, todayStr, announce } from '
 export async function customers(main) {
   const st = { q: '', source: '', has_policy: '', page: 1 };
   const out = h('div');
-  const q = h('input', { type: 'search', placeholder: 'Name, email, phone, ID' });
+  const q = h('input', { type: 'search', placeholder: 'Name, email, phone, address, ID' });
   const source = h('select', null, h('option', { value: '' }, 'Any first source'), ['paid', 'organic', 'referral', 'direct', 'unknown'].map((s) => h('option', { value: s }, s)));
   const hp = h('select', null, h('option', { value: '' }, 'Any'), h('option', { value: 'yes' }, 'Has issued policy'), h('option', { value: 'no' }, 'No issued policy'));
   const add = addForm();
@@ -14,16 +14,17 @@ export async function customers(main) {
     h('details', { class: 'card' }, h('summary', null, 'Add a customer manually'), add));
   async function load() {
     const r = await api(`/customers?${new URLSearchParams({ ...st, page: st.page })}`);
-    out.replaceChildren(table(`Customers (${r.total})`, ['Name', 'Email', 'Phone', 'State', 'First source', { label: 'Pets', num: 1 }, { label: 'Quotes', num: 1 }, { label: 'Policies', num: 1 }],
-      r.rows.map((c) => [h('a', { href: `#/customer/${c.id}` }, c.name), c.email || '—', c.phone || '—', c.state || '—', c.first_source_type ? `${c.first_source_type}${c.first_source_platform ? ` / ${c.first_source_platform}` : ''}` : 'Unknown', String(c.pets), String(c.quotes), String(c.policies)]),
+    out.replaceChildren(table(`Customers (${r.total})`, ['Name', 'Email', 'Phone', 'City', 'State', 'ZIP', 'First source', { label: 'Pets', num: 1 }, { label: 'Quotes', num: 1 }, { label: 'Policies', num: 1 }],
+      r.rows.map((c) => [h('a', { href: `#/customer/${c.id}` }, c.name), c.email || '—', c.phone || '—', c.city || '—', c.state || '—', c.postal_code || '—', c.first_source_type ? `${c.first_source_type}${c.first_source_platform ? ` / ${c.first_source_platform}` : ''}` : 'Unknown', String(c.pets), String(c.quotes), String(c.policies)]),
       { empty: r.total === 0 && !st.q ? 'No customers yet. Customers appear when someone requests a quote on your page, or when you import a quote/policy report on the Imports page.' : 'No customers match these filters.' }),
     h('div', { class: 'actions' }, h('button', { class: 'secondary', disabled: st.page <= 1, onclick: () => { st.page -= 1; load(); } }, 'Previous'), h('span', { class: 'muted' }, `Page ${r.page}`), h('button', { class: 'secondary', disabled: r.page * r.size >= r.total, onclick: () => { st.page += 1; load(); } }, 'Next')));
   }
   function addForm() {
-    const f = { name: h('input', { required: true }), email: h('input', { type: 'email' }), phone: h('input', { type: 'tel' }), state: h('input', { maxlength: 2 }) };
+    const f = { first_name: h('input', { required: true, autocomplete: 'off' }), last_name: h('input', { required: true, autocomplete: 'off' }), email: h('input', { type: 'email' }), phone: h('input', { type: 'tel' }),
+      address_line1: h('input'), address_line2: h('input'), city: h('input'), state: h('input', { maxlength: 2 }), postal_code: h('input', { maxlength: 12 }) };
     const msg = h('div', { role: 'status' });
     return h('form', { class: 'inline', onsubmit: async (e) => { e.preventDefault(); try { const r = await api('/customers', { method: 'POST', body: Object.fromEntries(Object.entries(f).map(([k, v]) => [k, v.value])) }); location.hash = `#/customer/${r.id}`; } catch (x) { msg.replaceChildren(banner('error', x.message)); } } },
-      field('Name*', f.name), field('Email', f.email), field('Phone', f.phone), field('State', f.state), h('button', { type: 'submit' }, 'Add customer'), msg);
+      field('First name*', f.first_name), field('Last name*', f.last_name), field('Email', f.email), field('Phone', f.phone), field('Address line 1', f.address_line1), field('Address line 2', f.address_line2), field('City', f.city), field('State', f.state), field('ZIP', f.postal_code), h('button', { type: 'submit' }, 'Add customer'), msg);
   }
   load();
 }
@@ -35,12 +36,18 @@ export async function customerDetail(main, id) {
   const fu = { due: h('input', { type: 'date', value: todayStr(), required: true }), note: h('input', { required: true, maxlength: 2000 }) };
   const petF = { name: h('input', { required: true }), species: h('select', null, h('option', { value: '' }, '—'), h('option', { value: 'dog' }, 'Dog'), h('option', { value: 'cat' }, 'Cat')), breed: h('input'), age: h('input', { placeholder: 'e.g. 3 years' }) };
   const msg = h('div', { role: 'status' });
+  const ef = { first_name: h('input', { value: c.first_name || '' }), last_name: h('input', { value: c.last_name || '' }), email: h('input', { type: 'email', value: c.email || '' }), phone: h('input', { type: 'tel', value: c.phone || '' }),
+    address_line1: h('input', { value: c.address_line1 || '' }), address_line2: h('input', { value: c.address_line2 || '' }), city: h('input', { value: c.city || '' }), state: h('input', { maxlength: 2, value: c.state || '' }), postal_code: h('input', { maxlength: 12, value: c.postal_code || '' }) };
+  const editCard = () => h('form', { class: 'card', onsubmit: async (e) => { e.preventDefault(); try { await api(`/customers/${c.id}`, { method: 'PATCH', body: Object.fromEntries(Object.entries(ef).map(([k, v]) => [k, v.value])) }); msg.replaceChildren(banner('ok', 'Customer details saved.')); announce('Saved'); } catch (x) { msg.replaceChildren(banner('error', x.message)); } } },
+    c.first_name || c.last_name ? null : banner('', `This record has a single full name ("${c.name}") imported without separate first/last columns. Enter first and last name below to split it; nothing is split automatically.`),
+    h('div', { class: 'filters' }, field('First name', ef.first_name), field('Last name', ef.last_name), field('Email', ef.email), field('Phone', ef.phone)),
+    h('div', { class: 'filters' }, field('Address line 1', ef.address_line1), field('Address line 2', ef.address_line2), field('City', ef.city), field('State', ef.state), field('ZIP', ef.postal_code)),
+    h('dl', null, h('dt', null, 'First tracked source'), h('dd', null, c.first_source_type ? `${c.first_source_type}${c.first_source_platform ? ` / ${c.first_source_platform}` : ''}` : 'Unknown'), h('dt', null, 'Provider customer ID'), h('dd', null, c.provider_customer_id || '—'), h('dt', null, 'Created'), h('dd', null, fmtTs(c.created_at))),
+    c.identity_note ? banner('', c.identity_note) : null, h('button', { type: 'submit' }, 'Save details'));
   const petName = (pid) => (d.pets.find((p) => p.id === pid) || {}).name || '—';
   main.replaceChildren(
     h('p', null, h('a', { href: '#/customers' }, '← Customers')), h('h1', null, c.name), msg,
-    h('div', { class: 'card' }, h('dl', null, h('dt', null, 'Email'), h('dd', null, c.email || '—'), h('dt', null, 'Phone'), h('dd', null, c.phone || '—'), h('dt', null, 'State'), h('dd', null, c.state || '—'),
-      h('dt', null, 'First tracked source'), h('dd', null, c.first_source_type ? `${c.first_source_type}${c.first_source_platform ? ` / ${c.first_source_platform}` : ''}` : 'Unknown'), h('dt', null, 'Provider customer ID'), h('dd', null, c.provider_customer_id || '—'), h('dt', null, 'Created'), h('dd', null, fmtTs(c.created_at))),
-    c.identity_note ? banner('', c.identity_note) : null),
+    editCard(),
     h('h2', null, 'Notes'), notes,
     h('p', null, h('button', { onclick: async () => { try { await api(`/customers/${c.id}`, { method: 'PATCH', body: { notes: notes.value } }); msg.replaceChildren(banner('ok', 'Notes saved.')); announce('Notes saved'); } catch (x) { msg.replaceChildren(banner('error', x.message)); } } }, 'Save notes')),
     h('h2', null, 'Pets'),

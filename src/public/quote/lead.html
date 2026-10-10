@@ -14,10 +14,15 @@
     <form id="form" hidden novalidate>
       <p id="disclosure" class="disclosure"></p>
       <fieldset><legend>About you</legend>
-        <label for="name">Full name</label><input id="name" autocomplete="name" required maxlength="120">
+        <label for="first">First name</label><input id="first" autocomplete="given-name" required maxlength="80">
+        <label for="last">Last name</label><input id="last" autocomplete="family-name" required maxlength="80">
         <label for="email">Email</label><input id="email" type="email" autocomplete="email" required>
         <label for="phone">Phone (optional)</label><input id="phone" type="tel" autocomplete="tel" maxlength="40">
+        <label for="addr1">Street address (optional)</label><input id="addr1" autocomplete="address-line1" maxlength="120">
+        <label for="addr2">Apt / unit (optional)</label><input id="addr2" autocomplete="address-line2" maxlength="120">
+        <label for="city">City (optional)</label><input id="city" autocomplete="address-level2" maxlength="80">
         <label for="state">State (2 letters, optional)</label><input id="state" maxlength="2" autocomplete="address-level1">
+        <label for="zip">ZIP (optional)</label><input id="zip" autocomplete="postal-code" maxlength="12">
       </fieldset>
       <div id="pets"></div>
       <button type="button" id="addPet" class="secondary">Add another pet</button>

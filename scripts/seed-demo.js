@@ -55,7 +55,7 @@ tx(db, () => {
     const qd = new Date(start.getTime() + Math.floor(rnd() * (days - 5)) * 86400000);
     const touch = draw();
     const first = touch ? { ...touch, at: new Date(qd.getTime() - 86400000).toISOString() } : null;
-    const cid = crm.createCustomer(db, { name: `Demo Customer ${String(i).padStart(3, '0')}`, email: `demo${i}@demo.invalid`, state: pick(['NY', 'NJ', 'CT', 'PA']), provider_customer_id: `DEMO-C${i}` }, first);
+    const cid = crm.createCustomer(db, { first_name: 'Demo', last_name: `Customer ${String(i).padStart(3, '0')}`, email: `demo${i}@demo.invalid`, state: pick(['NY', 'NJ', 'CT', 'PA']), address_line1: `${100 + i} Demo Street`, city: pick(['Demoville', 'Sampletown', 'Testburg']), postal_code: String(10000 + i), provider_customer_id: `DEMO-C${i}` }, first);
     const snap = { touches: first ? [first] : [], note: 'DEMO' };
     const npets = rnd() < 0.3 ? 2 : 1; const quoteIds = [];
     for (let k = 0; k < npets; k += 1) {
