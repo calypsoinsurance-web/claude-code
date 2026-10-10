@@ -1,48 +1,85 @@
-# Fetch: documentation and access still needed
+# Validation report — Calypso Pet CRM (2026-10-10)
 
-**Status: the Quote API adapter is DISABLED. The Fetch quote widget page (`/q/`) is built but not yet run against the real widget.** No Fetch API documentation, credentials, or written confirmation of access was
-available. The only public statement found (a web-search snippet of fetchpet.com/partners) is that Fetch has a
-"Partner Quote & Purchase API" with unique UTM codes for tracking, reached through a "Contact us" form. Nothing
-technical (endpoints, fields, auth, responses) was found, and the Fetch site could not be opened directly from the build
-environment. Nothing below has been assumed or implemented.
+**Verdict: working prototype, not production-ready.** Live Fetch quoting, automatic ad-platform reporting, real-file import
+mappings, email delivery, and deployment are unverified. Sign-in, persistence, calculations and imports work against
+synthetic data in automated tests.
 
-Ask Fetch (partners page → Contact us) for **written** answers, then send the documents to whoever continues this build:
+## 1. Requirements summary
+**Confirmed (from your brief), built:** private single-user CRM; customers/pets/quotes/policies/commission transactions/follow-ups/advertising records with stable IDs and migrations; ad metrics (spend, impressions, link clicks, CTR, CPC); cost per unique quoted customer, per issued policy, per buying customer (shown separately); $150 expected commission per issued policy; commission statement import; attribution frozen per quote, policy attribution only via verified provider quote ID; calendar view and gated acquisition view; follow-ups with reminder emails to you only; CSV/XLSX imports with mapping/preview/validation/duplicates/review queues; dashboard filters and CSV export; desktop + mobile; interface limited to Dashboard, Customers, Advertising, Imports, Follow-ups, Settings.
 
-| # | Question | Why it matters |
-|---|---|---|
-| 1 | Does my partner/API agreement permit a customer-facing flow where *my* page collects details and shows a real Fetch quote, with redirect to Fetch only for payment? | If not, the quoting page must be a handoff (redirect/link) instead. |
-| 2 | Technical docs: base URL, authentication method, sandbox vs production, rate limits. | Needed to write and test the adapter (`src/integrations/fetch.js`). |
-| 3 | Required customer and pet fields (and accepted values for species, breed, age, state). | Form fields and validation. |
-| 4 | How quotes are created and updated; the quote identifier; whether a quote can be re-priced. | Quote history, safe retries, linking policies to quotes. |
-| 5 | The actual pricing response (premium, payment frequency, coverage options, expiry). | The page must show only real responses. |
-| 6 | The supported payment handoff (URL format, token, return/redirect behaviour). | Redirect to Fetch for payment. |
-| 7 | How issuance is confirmed: webhook, polling, or report only; policy status values; cancellation data. | A redirect is **never** treated as a sale. |
-| 8 | Reporting endpoints and webhooks (separate from quoting), including whether quote ID appears on policy rows. | Automatic reconciliation of policies to quotes. |
-| 9 | Permitted storage of customer/quote data, retention, and any restrictions on tracking/UTM use. | Compliance. |
-| 10 | Required customer disclosures / consent wording and where it must appear. | Goes into Settings → Public quote page. |
-| 11 | A sanitized sample of the Fetch / First Connect customer, quote and policy exports (CSV/Excel), and of a commission statement. | Confirms column names, identifiers, date meanings, premium frequency, sign conventions before import mappings are finalized. |
+**Requested but NOT delivered (blocked):** live Fetch quote/payment/issuance integration; automatic Meta/TikTok/Google/LinkedIn syncing; Fetch reporting/webhooks.
 
-When docs arrive: implement `createQuote` in `src/integrations/fetch.js`, test with your credentials, add a test for each failure
-mode against recorded sandbox responses, and only then set `FETCH_LIVE_ENABLED=true`.
+## 2. Decisions
+**Approved by you on 2026-10-10** (stored in `config/decisions.json`; apply with `npm run apply-decisions`; applying them is tested):
+- Reporting time zone America/New_York; currency USD.
+- Attribution lookback 30 days; a direct visit does NOT replace an earlier non-direct source.
+- Acquisition group starts at the customer's first generated quote; returning customers stay in their first group; as-of date 2026-09-30 (a fixed date you update).
+- Cancellations: show issued policies gross with cancelled / not-cancelled counts beside them (net/active treatments not built).
+- Reminder address calypsoinsurance@gmail.com (you confirmed it is yours); daily at 8:00 AM Eastern. Reminders stay OFF until SMTP email is configured and you switch them on. `ADMIN_EMAIL` must still be set on the server.
+- Hosting direction: Render with the app as built, on a private subdomain of christinemikhailov.com (spelling confirmed). Vercel (needs a Postgres port; unverified file-system and cron limits) and Base44 (a rebuild on its builder) were considered and not chosen. **Not deployed; nothing purchased.** Render custom-domain terms/cost still to be verified.
+- Backups: you asked for automatic backup to Google Cloud Storage. **Not built or researched yet**; you were not sure whether you have a Google Cloud project/billing. Manual `npm run backup` until then.
 
-## Added 2026-10-10: questions about the widget you were given
-You supplied the embed snippet (partner `FC16191`) and the Container Setup PDF. They show the widget runs in a Fetch-hosted iframe and fires `ready`, `init` and `complete` events, but they do **not** say:
+- Widget metaData: **no extra keys are sent to Fetch** (you declined the visitor-ID pass-through). Existing partner identifiers stay verbatim. Attribution for widget quotes will rely on our own tracker (visitor ID recorded in the visitor's browser and linked to the widget `complete` event on the same page) once the real event's field names are known.
 
-| # | Question | Why it matters |
-|---|---|---|
-| W1 | What does the `complete` event's payload contain (quote ID, premium, customer/pet details)? Does `complete` mean a quote was generated, the user finished, or the window closed? | Until known, widget events are stored raw and never counted as quotes. |
-| W2 | May the widget be embedded on my own domain (`christinemikhailov.com` subdomain)? Is there a domain allow-list I must register? | Page may not load there otherwise. |
-| W3 | Is `metaData` a closed set of keys, or may I add my own (e.g. a campaign/ad ID)? May I change `utm_campaign` per ad without breaking First Connect tracking? | Lets paid quotes in First Connect reports carry my campaign/ad IDs, so quotes can be attributed. Not done: values are kept exactly as supplied. |
-| W4 | Do First Connect quote/policy reports include `metaData` UTM values and a quote ID that policy rows reference? Sanitized sample report please. | Needed to attribute widget quotes and link policies to their originating quote. |
-| W5 | How does payment/purchase happen after step 2 (inside the widget, redirect)? How is issuance reported? | A completed widget is never treated as a sale. |
-| W6 | Who owns required disclosures/consent shown to customers around the widget, and may I store widget data (permitted storage)? | Compliance; capture of raw events is off by default. |
-| W7 | Is the widget script version-pinned (`1.0.0` in the URL) and are there CSP/domain requirements (script, frame, connect hosts)? | I allowed `https://salesfunnelquotesdk.fetchpet.com` for script/frame and `https://*.fetchpet.com` for connect as a guess; real needs unverified. |
+**Still open:**
+| Decision | Effect until decided |
+|---|---|
+| Customer with differently-attributed quotes in channel reporting | Interim disclosed rule: counted under each platform with overlap shown and unique total. No allocation. |
+| Same for buying customers with differently-attributed policies | Same interim disclosure. |
+| Customer disclosure/consent wording; tracking/privacy approach | Public form and tracking stay off (wording depends on Fetch's requirements). |
+| Network/placement and other items awaiting Fetch / platform documentation | See `docs/FETCH_DOCUMENTATION_NEEDED.md`. |
 
-## Owner's answers to W1–W5 (2026-10-10) — REPORTED BY YOU, NOT YET CONFIRMED IN WRITING BY FETCH
-| # | Your answer | How the app treats it |
-|---|---|---|
-| W1 | The `complete` event carries the premium, customer and pet details, and means a quote was generated. | **Exact field names are unknown**, so nothing is parsed yet. Next step: record one real `complete` event and build a tested mapping from it. |
-| W2 | Embedding on your own domain is allowed. | Page is built for it; confirm in writing if Fetch requires a registered domain. |
-| W3 | You can add your own `metaData` keys. | Not applied yet. Proposal: add one new key carrying our anonymous visitor ID (see decision pending). Existing identifiers stay unchanged. |
-| W4 | Reports do NOT include the widget's UTM values or a quote ID linking policies to quotes. | Policy→quote links cannot be verified from reports, so policy attribution stays **Unknown** unless another verified identifier is found. |
-| W5 | After step 2 the purchase happens on a tracked fetchpet.com link; you see it in your Fetch dashboard. | A widget completion is never counted as a sale. We need to learn what identifiers the dashboard/exports show per sale. |
+## 3. Architecture (minimal)
+One Node 22 process: Express + built-in SQLite (`node:sqlite`, flagged experimental by Node) on a single database file; static vanilla-JS UI; public router (`/api/public/*`, `/q/`, `/t.js`) separate from the private router (everything else under `/api`, behind session auth). Pure calculation module (`src/calc.js`) tested in isolation. Money: integer cents/micros. Quote snapshots are immutable JSON; attribution rules are applied when reporting (so approving/changing a rule re-evaluates reports without altering stored snapshots).
+
+## 4. Capability findings
+Legend: **Documented** = a public source says it exists (read only via web-search snippets — the official sites could not be opened from the build environment). **Available to your account** = unknown until the provider confirms. **Tested** = a real call succeeded with your credentials.
+
+| Integration | Documented | Available to you | Tested | State in app |
+|---|---|---|---|---|
+| Fetch quote widget (iframe + `sdk.js`) | Yes, from First Connect's supplied snippet and setup PDF (events ready/init/complete); `complete` payload and reporting NOT documented | Supplied for partner FC16191; use on your own domain unconfirmed | No (real script could not be loaded here; wiring tested with a labelled stub only) | Page `/q/` built, off by default |
+| Fetch partner Quote & Purchase API | Existence only (fetchpet.com/partners snippet); no technical docs found | Unknown | No | Adapter disabled; see `docs/FETCH_DOCUMENTATION_NEEDED.md` |
+| Fetch reporting / webhooks / policy status | Not found | Unknown | No | Report import only |
+| Meta Marketing API insights | Breakdowns incl. `publisher_platform`/`platform_position` (snippet); link-click field names/definitions not verified | Unknown | No | Not implemented; CSV import |
+| TikTok Business API reporting | Third-party examples only; official docs unread | Unknown | No | Not implemented; CSV import |
+| Google Ads API | Access levels test/basic/standard (snippet); field restrictions unverified | Unknown | No | Not implemented; CSV import |
+| LinkedIn ad analytics | `clicks` and `landingPageClicks` metrics, pivots (Microsoft Learn snippet); program access unverified | Unknown | No | Not implemented; CSV import |
+
+No platform integration is claimed to work. Click-ID parameter names used for classification (`fbclid`, `gclid/wbraid/gbraid`, `ttclid`) are conventional and **unverified**; LinkedIn is classified by UTM only.
+
+## 5. Actually tested behavior (automated, `npm test`: 49 tests, all passing; synthetic fixtures only)
+- Spec fixture: $300 / 10,000 impressions / 200 link clicks / 20 quoted / 3 buyers / 4 policies → CTR 2%, CPC $1.50, $15 per quoted customer, $75 per policy, $100 per buyer, expected commission $600 — both as pure functions and end-to-end through the database and reports.
+- N/A (not 0) for zero denominators and missing data; aggregate rates from totals; incompatible click definitions not combined; all-clicks separate; other currencies excluded and disclosed; overlapping campaign/ad/placement rows not double-counted.
+- Multiple pets and repeat quotes count one customer; a customer in two months counts once for the combined range; platform-level uniques disclose overlap.
+- Attribution: snapshot frozen at submission; later visits ignored; pending until rules approved; direct-visit rule both ways; lookback; no touches → Unknown; organic and unknown excluded from paid denominators; policy uses its verified originating quote, not another quote; no quote ID → Unknown.
+- Imports: preview saves nothing; re-import of ads/quotes/policies/commissions creates no duplicates; names never merge customers; conflicting/missing identifiers go to review and can be resolved; row-level errors; blank ≠ 0; explicit date formats; XLSX read; fake-extension and wrong-type files rejected.
+- Commission: $600 receipts + $150 reversal → $450 net with expected still $600; adjustments not treated as receipts; sign-convention contradictions rejected; identical lines in one file kept; unmatched/lump-sum lines stay out of policy balances; exact policy-number matching only; outstanding balance labelled with its basis.
+- Calendar vs acquisition: quote in January + policy in February handled separately; acquisition view gated until decisions are made.
+- Quote flow: disabled-adapter lead saved with no fabricated quote; duplicate submissions and retries safe; provider failure keeps saved data; provider-answered-but-save-failed is recovered without re-asking the provider; an answer without a real price is rejected; validation and honeypot.
+- Security: every private endpoint returns 401 unauthenticated; login failures; CSRF header/origin; public API exposes no CRM records; sign-in disabled when credentials are unset; security headers; CSV formula neutralisation; visit endpoint stores no personal fields.
+- Reminders (with a fake mail transport): only to `ADMIN_EMAIL`; no duplicates, including concurrent runs; completed tasks skipped; failures leave the task visible with the error and can be retried once; stays off until confirmed/enabled.
+- Manual browser run (Chromium via Playwright) on the demo database: sign-in, all six pages on desktop and 390 px mobile with no console errors and no horizontal overflow after fixes; an end-to-end commission import (preview → commit) through the UI; the public page (off by default → on → lead saved with no price shown; anonymous API call returned 401). Dashboard screenshot reviewed.
+
+**Also tested:** downloaded backup is a valid SQLite file containing the data and needs sign-in plus the CSRF header; apply-decisions fills only empty settings and is idempotent. Render blueprint/guide written from search-snippet docs and **not executed**.
+
+**Widget tests (added):** config keeps partner identifiers verbatim; widget page off by default and enabled only via the private settings; raw widget events ignored unless capture is on, validated, size-bounded and never create quotes; quote-page security policy allows only Fetch's host while CRM pages stay strict. Manual Chromium run with a **stand-in** for Fetch's script: container mounts, `init`/`invoke` called with the supplied config, container heights 520 px desktop / 680 px mobile per the PDF, events recorded. **The real widget has not been run.**
+
+## 6. Documented but untested
+Everything in section 4 beyond existence; real SMTP delivery (only a fake transport was used); the `backup` script ran once but a **restore was not rehearsed**; deployment steps; behavior with real Fetch / ad-platform / commission files; the tracker snippet embedded on an external site (cross-origin path covered only at API level); hosting prices (from search snippets).
+
+## 7. Blocked or unsupported
+The widget does not give this app quote data (pricing, IDs), so counting quotes still depends on importing First Connect reports; the `complete` event is not treated as a quote.
+Live Fetch quoting, payment handoff, issuance confirmation, webhooks; automatic ad syncing for all four platforms; Facebook vs Instagram split from any source other than a report that contains a publisher-platform breakdown; acquisition options other than first-quote/first-group-only; allocation rules for multi-source customers; currency conversion; manual entry of quotes/policies (use import); a "payment handoff" button (no supported handoff documented, so none exists).
+
+## 8. Known limitations and honest caveats
+- Quote time for a quote saved on a *retry* is the save time, not the provider response time.
+- Imports with only a date (no time) use that date as the calendar day and midnight UTC for lookback checks.
+- Campaign/ad-level reporting needs ad URLs that carry platform IDs in `utm_campaign`/`utm_content`; otherwise paid outcomes appear in platform totals but not campaign rows (the count of such quotes is shown).
+- A shared device/browser could link one person's visits to another's quote (visitor-ID based).
+- `node:sqlite` is experimental in Node 22; single-instance only. `npm audit` reports 2 moderate findings via `exceljs → uuid`.
+- Customer names/notes appear in reminder emails (to you only); remove if you prefer IDs only.
+- Ad-spend dates are taken as reported in the report's own time zone (stored per row), not converted.
+- Acquisition "buying" counts policies issued on/after the first-quote date up to the as-of date.
+
+## 9. Estimated recurring cost
+≈ $7–10/month (Render Starter + 1 GB disk + free email tier), under the $50 target; separate and unresearched items (domain, Claude usage, API fees) are listed in `docs/COSTS.md`. Estimate only; prices from search snippets.
