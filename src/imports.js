@@ -384,7 +384,10 @@ async function stage(db, kind, filename, buf, { headerRow } = {}) {
 
 function processAll(db, imp, mapping, options) {
   const rows = db.prepare('SELECT row_number, data_json FROM import_rows WHERE import_id = ? ORDER BY row_number').all(imp.id);
-  const counts = { created: 0, updated: 0, unchanged: 0, review: 0, error: 0 };
+  const counts = { created: 0, updated: 0, unchanged: 0, review: 0, error: 0, excluded: 0 };
+  const excludedInfo = { count: 0, cents: 0, unreadable: 0, values: {} };
+  const filterCol = imp.kind === 'commissions' && options.filter_column ? options.filter_column : null;
+  const filterVals = new Set((options.filter_values || []).map((x) => String(x).trim().toLowerCase()));
   const errors = []; const samples = []; const notes = {};
   const seenOcc = new Map();
   const dist = { status: {}, frequency: {}, types: {} };
@@ -392,6 +395,17 @@ function processAll(db, imp, mapping, options) {
   for (const r of rows) {
     const raw = JSON.parse(r.data_json);
     let res;
+    if (filterCol) {
+      const fv = String(raw[filterCol] ?? '').trim();
+      if (!filterVals.has(fv.toLowerCase())) {
+        // Excluded by the owner's product filter: not imported, but counted and summed so nothing disappears silently.
+        const amt = mapping.amount ? parseMoney(raw[mapping.amount], 100) : null;
+        excludedInfo.count += 1; counts.excluded += 1;
+        if (typeof amt === 'number') excludedInfo.cents += amt; else excludedInfo.unreadable += 1;
+        excludedInfo.values[fv || '(blank)'] = (excludedInfo.values[fv || '(blank)'] || 0) + 1;
+        continue;
+      }
+    }
     try {
       const v = normalizeRow(imp.kind, raw, mapping, options);
       if (imp.kind === 'quotes') { res = applyQuote(db, imp.id, v, r.row_number); if (v.payment_frequency) dist.frequency[v.payment_frequency] = (dist.frequency[v.payment_frequency] || 0) + 1; }
@@ -411,16 +425,30 @@ function processAll(db, imp, mapping, options) {
     if (samples.length < 15) samples.push({ row: r.row_number, action: res.action, message: res.message || null });
   }
   const stagedNotes = imp.notes_json ? JSON.parse(imp.notes_json) : { skipped: [] };
-  return { counts, errors, samples, notes, distinct: dist, commissionTotalsCents: imp.kind === 'commissions' ? totals : undefined, total: rows.length, skippedRows: stagedNotes.skipped || [] };
+  return { counts, errors, samples, notes, distinct: dist, commissionTotalsCents: imp.kind === 'commissions' ? totals : undefined, total: rows.length, skippedRows: stagedNotes.skipped || [], excluded: excludedInfo };
 }
 
 class RollbackPreview extends Error {}
 
-function run(db, importId, mapping, options, commit) {
+const LIST_OPTIONS = ['issued_values', 'receipt_values', 'reversal_values', 'adjustment_values', 'coverage_columns', 'filter_values'];
+// Accept either a JSON list or a comma-separated string for list-type options.
+function normalizeOptions(options) {
+  const o = { ...(options || {}) };
+  for (const k of LIST_OPTIONS) if (typeof o[k] === 'string') o[k] = o[k].split(',').map((x) => x.trim()).filter(Boolean);
+  return o;
+}
+
+function run(db, importId, mapping, rawOptions, commit) {
+  const options = normalizeOptions(rawOptions);
   const imp = db.prepare('SELECT * FROM imports WHERE id = ?').get(importId);
   if (!imp) throw Object.assign(new Error('Import not found'), { status: 404 });
   if (imp.status === 'committed') throw Object.assign(new Error('This import was already committed. Upload the file again to re-import it (nothing will be duplicated).'), { status: 409 });
   const optErrors = validateOptions(imp.kind, mapping, options || {});
+  if (imp.kind === 'commissions' && (options || {}).filter_column) {
+    const hdrs = JSON.parse(imp.headers_json);
+    if (!hdrs.includes(options.filter_column)) optErrors.push(`The filter column "${options.filter_column}" is not in this file.`);
+    if (!(options.filter_values || []).length) optErrors.push('List the values in the filter column that mean pet policies (e.g. the carrier name). Everything else is excluded.');
+  }
   if (optErrors.length) return { ok: false, problems: optErrors };
   let result;
   try {
@@ -432,6 +460,8 @@ function run(db, importId, mapping, options, commit) {
       res.errors.forEach((e) => ins.run(imp.id, e.row, e.message));
       db.prepare("UPDATE imports SET status='committed', mapping_json=?, options_json=?, rows_created=?, rows_updated=?, rows_unchanged=?, rows_errored=?, rows_review=?, committed_at=? WHERE id=?")
         .run(JSON.stringify(mapping), JSON.stringify(options), res.counts.created, res.counts.updated, res.counts.unchanged, res.counts.error, res.counts.review, now(), imp.id);
+      const prevNotes = imp.notes_json ? JSON.parse(imp.notes_json) : {};
+      db.prepare('UPDATE imports SET notes_json=? WHERE id=?').run(JSON.stringify({ ...prevNotes, excluded: res.excluded, filter: options.filter_column ? { column: options.filter_column, values: options.filter_values } : null }), imp.id);
       db.prepare('DELETE FROM import_rows WHERE import_id = ?').run(imp.id); // staged rows are no longer needed
       return res;
     });

@@ -32,14 +32,15 @@ npm run demo          # runs the app on it; every page shows a purple DEMO DATA 
 Your real database is `data/crm.sqlite` and is never touched by the demo.
 
 ### Run the tests
-`npm test` (58 automated tests: calculations, imports, attribution, security, quote retries, reminders).
+`npm test` (60 automated tests: calculations, imports, attribution, security, quote retries, reminders).
 
 ## Getting your data in
 1. **Imports → New import**, pick the type, choose your file, match columns, set the "what the file means" options, **Preview** (nothing saved), then **Commit**.
 2. Sample layouts are in `templates/` (synthetic; **not** the real Fetch/ad-platform formats – real files need their own mapping).
 3. Re-importing a file is safe. Uncertain customer matches (conflicting IDs, no email/ID) wait in **Imports → Review queue**. Customers are never merged by name.
 4. Statements/reports with a title block above the table are fine: the app finds the header row (or you can type its row number), skips total/note rows, and for commission statements compares the file's stated total with the sum of lines it will import.
-5. Advertising files: enter the platform's *exact* link-click metric name and definition. Rows with different definitions are not combined into one CTR/CPC.
+5. Commission statements can include other products. Use "Only import lines where this column… has one of these values" (e.g. Carrier = your pet carrier) to keep non-pet lines out; excluded lines are counted and shown, never silently dropped.
+6. Advertising files: enter the platform's *exact* link-click metric name and definition. Rows with different definitions are not combined into one CTR/CPC.
 
 ## Tracking and attribution
 - Put the tracker on your website pages: `<script src="https://YOUR-CRM-HOST/t.js" async></script>` and list your site in `PUBLIC_ALLOWED_ORIGINS`. It is **off** until you set `TRACKING_ENABLED=true` (decide your privacy notice/consent approach first).

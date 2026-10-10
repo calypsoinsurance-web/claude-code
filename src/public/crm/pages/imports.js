@@ -69,6 +69,8 @@ function optionFields(kind, headers) {
     add('txn_date_fixed', 'Date to use if the file has no date column', text({ placeholder: 'in the date format chosen above' }), 'Applied to every line. Use the date that matches your rule for when commission counts as received (e.g. the statement\'s "Date Sent" or the statement month end). Do not use a policy effective date.');
     add('carrier', 'Carrier (optional, helps matching)', text());
     add('sign_convention', 'How does the statement show reversals?*', sel([['', 'Choose…'], ['signed', 'Reversals are negative numbers; receipts positive'], ['type_column', 'A type column says receipt / reversal / adjustment']]));
+    { const fc = h('select', null, h('option', { value: '' }, 'No filter — import every line'), headers.map((x) => h('option', { value: x }, x))); o.filter_column = fc; rows.push(field('Only import lines where this column…', fc, 'Used to keep non-pet products out (for example the Carrier column).')); }
+    add('filter_values', '…has one of these values (pet lines)', text({ placeholder: 'e.g. Fetch' }), 'Comma separated. Lines with any other value are NOT imported; they are counted and their amount shown in the preview.');
     add('amount_sign', 'With a type column, are amounts…', sel([['', 'Choose…'], ['as_is', 'Already signed'], ['absolute', 'Always positive (app applies the sign for receipts/reversals)']]));
     add('receipt_values', 'Type values meaning receipt', text({ placeholder: 'Commission, Payment' }));
     add('reversal_values', 'Type values meaning reversal', text({ placeholder: 'Chargeback' }));
@@ -89,7 +91,7 @@ function mapStep(area, kind, st) {
   const result = h('div', { 'aria-live': 'polite' });
   const gather = () => {
     const mapping = {}; for (const [f, s] of Object.entries(mapSel)) if (s.value) mapping[f] = s.value;
-    const options = {}; const listy = ['issued_values', 'receipt_values', 'reversal_values', 'adjustment_values', 'coverage_columns'];
+    const options = {}; const listy = ['issued_values', 'receipt_values', 'reversal_values', 'adjustment_values', 'coverage_columns', 'filter_values'];
     for (const [k, n] of Object.entries(o)) { const v = n.value.trim(); if (!v) continue; options[k] = listy.includes(k) ? v.split(',').map((x) => x.trim()).filter(Boolean) : v; }
     return { mapping, options };
   };
@@ -120,8 +122,9 @@ function summary(r, committed) {
   const c = r.counts;
   return h('div', null,
     banner(committed ? 'ok' : '', h('strong', null, committed ? 'Import saved. ' : 'Preview only — nothing has been saved. '),
-      `${r.total} rows: ${c.created} new, ${c.updated} updated, ${c.unchanged} already present (skipped), ${c.review} sent to review, ${c.error} with errors.`),
-    (() => { if (!r.commissionTotalsCents) return null; const stated = r.skippedRows.flatMap((x) => x.numbers); const net = r.commissionTotalsCents.receipt + r.commissionTotalsCents.reversal + r.commissionTotalsCents.adjustment; if (!stated.length) return h('p', { class: 'muted' }, 'The file states no total, so there is nothing to reconcile against.'); const ok = stated.includes(net); return banner(ok ? 'ok' : 'error', ok ? `Reconciled: the total stated in the file (${cents(net)}) equals the sum of the lines to be imported.` : `Does NOT reconcile: the file states ${stated.map((v) => cents(v)).join(' / ')}, but the lines to be imported sum to ${cents(net)}. Check the type mapping and the row errors before committing.`); })(),
+      `${r.total} rows: ${c.created} new, ${c.updated} updated, ${c.unchanged} already present (skipped), ${c.review} sent to review, ${c.error} with errors${c.excluded ? `, ${c.excluded} excluded by your product filter` : ''}.`),
+    r.excluded && r.excluded.count ? banner('', h('strong', null, `Excluded by filter: ${r.excluded.count} line(s) worth ${cents(r.excluded.cents)}`), ` (values: ${Object.entries(r.excluded.values).map(([k, v]) => `${k} ×${v}`).join(', ')}).${r.excluded.unreadable ? ` ${r.excluded.unreadable} excluded line(s) had an unreadable amount.` : ''} These are not imported.`) : null,
+    (() => { if (!r.commissionTotalsCents) return null; const stated = r.skippedRows.flatMap((x) => x.numbers); const net = r.commissionTotalsCents.receipt + r.commissionTotalsCents.reversal + r.commissionTotalsCents.adjustment + (r.excluded ? r.excluded.cents : 0); if (!stated.length) return h('p', { class: 'muted' }, 'The file states no total, so there is nothing to reconcile against.'); const ok = stated.includes(net); return banner(ok ? 'ok' : 'error', ok ? `Reconciled: the total stated in the file (${cents(net)}) equals imported lines plus excluded lines.` : `Does NOT reconcile: the file states ${stated.map((v) => cents(v)).join(' / ')}, but imported plus excluded lines sum to ${cents(net)}. Check the type mapping and the row errors before committing.`); })(),
     r.commissionTotalsCents ? h('p', null, `Totals in this file — receipts ${cents(r.commissionTotalsCents.receipt)}, reversals ${cents(r.commissionTotalsCents.reversal)}, adjustments ${cents(r.commissionTotalsCents.adjustment)}. Check these against the statement.`) : null,
     Object.keys(r.notes).length ? h('ul', null, Object.entries(r.notes).map(([k, v]) => h('li', null, `${v} row(s): ${k}`))) : null,
     ['status', 'frequency', 'types'].map((k) => Object.keys(r.distinct[k]).length ? h('p', { class: 'muted' }, `Distinct ${k} values found: ${Object.entries(r.distinct[k]).map(([a, b]) => `${a} (${b})`).join(', ')}`) : null),

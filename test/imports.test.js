@@ -295,3 +295,32 @@ test('statement with a title block, header on row 11, total and note rows: heade
   assert.equal(r2.body.counts.error, 1);
   await t.close();
 });
+
+test('commission product filter: only listed carrier values are imported; excluded lines are counted and summed, never silent', async () => {
+  const t = await setup();
+  const rows = [['Carrier', 'Policy#', 'TransType', 'Commission'], ['PetCarrier', 'PET-1', 'New', '150.00'], ['OtherCarrier', 'GL-1', 'New', '2.70'], ['PetCarrier', 'PET-2', 'New', '150.00'], ['', 'ODD-1', 'New', '5.00']];
+  const st = await upload(t, 'commissions', rows);
+  const map = { amount: 'Commission', policy_number: 'Policy#', carrier: 'Carrier', txn_type: 'TransType' };
+  const opt = { date_format: 'iso', currency: 'USD', statement_ref: 'S1', txn_date_fixed: '2026-09-15', sign_convention: 'type_column', amount_sign: 'as_is', receipt_values: ['New'], filter_column: 'Carrier', filter_values: ['PetCarrier'] };
+  const noVals = await t.call('POST', `/api/imports/${st.importId}/preview`, { mapping: map, options: { ...opt, filter_values: [] } });
+  assert.equal(noVals.body.ok, false);
+  const badCol = await t.call('POST', `/api/imports/${st.importId}/preview`, { mapping: map, options: { ...opt, filter_column: 'Nope' } });
+  assert.equal(badCol.body.ok, false);
+  const pv = await t.call('POST', `/api/imports/${st.importId}/preview`, { mapping: map, options: opt });
+  assert.equal(pv.body.counts.created, 2); assert.equal(pv.body.counts.excluded, 2);
+  assert.equal(pv.body.excluded.cents, 770); assert.equal(pv.body.excluded.values.OtherCarrier, 1); assert.equal(pv.body.excluded.values['(blank)'], 1);
+  assert.equal(count(t, 'commission_transactions'), 0);
+  await t.call('POST', `/api/imports/${st.importId}/commit`, { mapping: map, options: opt });
+  assert.equal(count(t, 'commission_transactions'), 2);
+  assert.equal(t.db.prepare("SELECT COUNT(*) n FROM commission_transactions WHERE statement_policy_ref='GL-1'").get().n, 0);
+  assert.match(t.db.prepare('SELECT notes_json FROM imports WHERE id=?').get(st.importId).notes_json, /OtherCarrier/);
+  await t.close();
+});
+
+test('list-type import options are accepted as comma-separated strings too', async () => {
+  const t = await setup();
+  const st = await upload(t, 'commissions', [['Carrier', 'Policy#', 'TransType', 'Commission'], ['PetCarrier', 'PET-1', 'New', '150.00'], ['Other', 'X-1', 'New', '1.00']]);
+  const r = await t.call('POST', `/api/imports/${st.importId}/preview`, { mapping: { amount: 'Commission', policy_number: 'Policy#', carrier: 'Carrier', txn_type: 'TransType' }, options: { date_format: 'iso', currency: 'USD', statement_ref: 'S', txn_date_fixed: '2026-09-15', sign_convention: 'type_column', amount_sign: 'as_is', receipt_values: 'New, Renewal', filter_column: 'Carrier', filter_values: 'PetCarrier, Fetch' } });
+  assert.equal(r.status, 200); assert.equal(r.body.counts.created, 1); assert.equal(r.body.counts.excluded, 1);
+  await t.close();
+});
