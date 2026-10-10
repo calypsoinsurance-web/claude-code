@@ -35,6 +35,7 @@ Legend: **Documented** = a public source says it exists (read only via web-searc
 
 | Integration | Documented | Available to you | Tested | State in app |
 |---|---|---|---|---|
+| Fetch quote widget (iframe + `sdk.js`) | Yes, from First Connect's supplied snippet and setup PDF (events ready/init/complete); `complete` payload and reporting NOT documented | Supplied for partner FC16191; use on your own domain unconfirmed | No (real script could not be loaded here; wiring tested with a labelled stub only) | Page `/q/` built, off by default |
 | Fetch partner Quote & Purchase API | Existence only (fetchpet.com/partners snippet); no technical docs found | Unknown | No | Adapter disabled; see `docs/FETCH_DOCUMENTATION_NEEDED.md` |
 | Fetch reporting / webhooks / policy status | Not found | Unknown | No | Report import only |
 | Meta Marketing API insights | Breakdowns incl. `publisher_platform`/`platform_position` (snippet); link-click field names/definitions not verified | Unknown | No | Not implemented; CSV import |
@@ -57,10 +58,13 @@ No platform integration is claimed to work. Click-ID parameter names used for cl
 - Reminders (with a fake mail transport): only to `ADMIN_EMAIL`; no duplicates, including concurrent runs; completed tasks skipped; failures leave the task visible with the error and can be retried once; stays off until confirmed/enabled.
 - Manual browser run (Chromium via Playwright) on the demo database: sign-in, all six pages on desktop and 390 px mobile with no console errors and no horizontal overflow after fixes; an end-to-end commission import (preview → commit) through the UI; the public page (off by default → on → lead saved with no price shown; anonymous API call returned 401). Dashboard screenshot reviewed.
 
+**Widget tests (added):** config keeps partner identifiers verbatim; widget page off by default and enabled only via the private settings; raw widget events ignored unless capture is on, validated, size-bounded and never create quotes; quote-page security policy allows only Fetch's host while CRM pages stay strict. Manual Chromium run with a **stand-in** for Fetch's script: container mounts, `init`/`invoke` called with the supplied config, container heights 520 px desktop / 680 px mobile per the PDF, events recorded. **The real widget has not been run.**
+
 ## 6. Documented but untested
 Everything in section 4 beyond existence; real SMTP delivery (only a fake transport was used); the `backup` script ran once but a **restore was not rehearsed**; deployment steps; behavior with real Fetch / ad-platform / commission files; the tracker snippet embedded on an external site (cross-origin path covered only at API level); hosting prices (from search snippets).
 
 ## 7. Blocked or unsupported
+The widget does not give this app quote data (pricing, IDs), so counting quotes still depends on importing First Connect reports; the `complete` event is not treated as a quote.
 Live Fetch quoting, payment handoff, issuance confirmation, webhooks; automatic ad syncing for all four platforms; Facebook vs Instagram split from any source other than a report that contains a publisher-platform breakdown; acquisition options other than first-quote/first-group-only; allocation rules for multi-source customers; currency conversion; manual entry of quotes/policies (use import); a "payment handoff" button (no supported handoff documented, so none exists).
 
 ## 8. Known limitations and honest caveats

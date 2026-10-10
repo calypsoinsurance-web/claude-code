@@ -32,7 +32,7 @@ npm run demo          # runs the app on it; every page shows a purple DEMO DATA 
 Your real database is `data/crm.sqlite` and is never touched by the demo.
 
 ### Run the tests
-`npm test` (50 automated tests: calculations, imports, attribution, security, quote retries, reminders).
+`npm test` (54 automated tests: calculations, imports, attribution, security, quote retries, reminders).
 
 ## Getting your data in
 1. **Imports → New import**, pick the type, choose your file, match columns, set the "what the file means" options, **Preview** (nothing saved), then **Commit**.
@@ -43,7 +43,10 @@ Your real database is `data/crm.sqlite` and is never touched by the demo.
 ## Tracking and attribution
 - Put the tracker on your website pages: `<script src="https://YOUR-CRM-HOST/t.js" async></script>` and list your site in `PUBLIC_ALLOWED_ORIGINS`. It is **off** until you set `TRACKING_ENABLED=true` (decide your privacy notice/consent approach first).
 - Quote attribution is frozen on each quote. To match a paid quote to a campaign/ad in reports, your ad URLs must carry the platform **IDs** in `utm_campaign` (campaign ID) and `utm_content` (ad ID); matching is exact. Check each platform's URL-parameter/macro documentation for the right placeholders (not verified here).
-- The public quote page is `/q/`. It stays off until you add the customer disclosure text and enable it (Settings). While live Fetch quoting is disabled it saves the lead, shows **no price**, and creates a follow-up for you.
+- **Quote page `/q/`** embeds the Fetch quote widget you were given (config in `config/fetch-widget.json`, copied from your snippet; keep its partner identifiers unchanged). Fetch shows the quote inside its own frame. It is off until you enable it in Settings, and it has **not yet been run against the real widget** (the build environment could not load Fetch's script; only a stand-in was used to test the wiring). Open `/q/` yourself and check the browser console for blocked-content errors.
+- The widget does not hand this app a quote. Quotes, policies and commissions arrive by importing First Connect reports. Without your own campaign IDs in those reports, paid attribution for widget quotes will mostly be **Unknown** (see W3/W4 in `docs/FETCH_DOCUMENTATION_NEEDED.md`).
+- Optional "Record raw widget events" (off by default) stores what the widget reports, as received, so we can learn what `complete` contains. These are never counted as quotes.
+- `/q/lead.html` is the older own-form lead capture (no price shown). Not needed if you use the widget.
 
 ## Deploying (only when you decide to; nothing has been deployed)
 Requirements: a host that runs Node 22+ with a **persistent disk** for `DB_PATH`, HTTPS, and the `.env` values set as environment variables (never commit them). Suggested: Render Starter web service + 1 GB disk (≈ $7.25/month; see `docs/COSTS.md`).

@@ -1,0 +1,14 @@
+{
+  "_comment": "Copied from the widget snippet Fetch/First Connect supplied (quote-sdk-firstconnect_FC16191.html). metaData holds the partner's tracking identifiers: do not change them without Fetch's written confirmation.",
+  "sdkUrl": "https://salesfunnelquotesdk.fetchpet.com/fetchQuoteWidget/1.0.0/sdk.js",
+  "invoke": {
+    "styles": { "body": { "backgroundColor": "#f4f4f4" }, "button": { "active": { "backgroundColor": "#f19fc2", "color": "#000000", "border": "2px solid #f19fc2" } } },
+    "label": { "button": { "buttonTextStep1": "Get your free quote", "buttonTextStep2": "See quote details" }, "heading": { "headingTextStep1": "Tell us about your pet" } },
+    "metaData": { "c": "firstconnect", "p": "firstconnect", "utm_medium": "partnership", "utm_source": "firstconnect", "utm_campaign": "firstconnect_FC16191_widget", "a": "FC16191" },
+    "preFillFormData": { "petName": "", "petType": "", "petBreedId": "", "petAge": "", "customerZipcode": "", "customerEmail": "" },
+    "partnerLogoURL": "",
+    "showAppLogo": true,
+    "showSecondScreen": true,
+    "showHeadingOnStep1": true
+  }
+}

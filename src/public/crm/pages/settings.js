@@ -1,7 +1,7 @@
 import { h, api, table, field, banner, fmtTs, announce } from '../lib.js';
 
 export async function settings(main) {
-  const [s, integ] = await Promise.all([api('/settings'), api('/integrations')]);
+  const [s, integ, wev] = await Promise.all([api('/settings'), api('/integrations'), api('/widget-events')]);
   const v = s.settings; const msg = h('div', { role: 'status' });
   const inputs = {};
   const save = async (keys) => {
@@ -16,7 +16,9 @@ export async function settings(main) {
   const remKeys = ['reminder_email_confirmed', 'reminder_hour', 'reminder_timezone', 'reminder_enabled'];
   inputs.reminder_email_confirmed = h('input', { type: 'checkbox', checked: v.reminder_email_confirmed === 'true' });
   inputs.reminder_enabled = h('input', { type: 'checkbox', checked: v.reminder_enabled === 'true' });
-  const pubKeys = ['public_disclosure_text', 'public_form_enabled'];
+  const pubKeys = ['public_disclosure_text', 'public_form_enabled', 'public_widget_enabled', 'widget_capture_enabled'];
+  inputs.public_widget_enabled = h('input', { type: 'checkbox', checked: v.public_widget_enabled === 'true' });
+  inputs.widget_capture_enabled = h('input', { type: 'checkbox', checked: v.widget_capture_enabled === 'true' });
   inputs.public_form_enabled = h('input', { type: 'checkbox', checked: v.public_form_enabled === 'true' });
   inputs.public_disclosure_text = h('textarea', null, v.public_disclosure_text || '');
   inputs.reminder_hour = h('input', { type: 'number', min: '0', max: '23', value: v.reminder_hour || '' });
@@ -33,7 +35,15 @@ export async function settings(main) {
       h('div', { class: 'filters' }, field('Send at this hour (0–23, local to the zone below)', inputs.reminder_hour), field('Reminder time zone', inputs.reminder_timezone)),
       h('label', null, h('span', null, inputs.reminder_enabled, ' Enable daily reminders'), h('span', { class: 'muted' }, 'One email lists follow-ups that are due or overdue and not yet reminded. Each follow-up date is reminded once.')),
       h('div', { class: 'actions' }, h('button', { type: 'submit' }, 'Save reminder settings'), h('button', { type: 'button', class: 'secondary', onclick: async () => { try { const r = await api('/reminders/test', { method: 'POST' }); msg.replaceChildren(banner('ok', `Test sent to ${r.sentTo}.`)); } catch (x) { msg.replaceChildren(banner('error', x.message)); } } }, 'Send a test email'))),
-    h('h2', null, 'Public quote page'),
+    h('h2', null, 'Fetch quote widget page (/q/)'),
+    h('form', { class: 'card', onsubmit: (e) => { e.preventDefault(); save(['public_widget_enabled', 'widget_capture_enabled', 'public_disclosure_text']); } },
+      banner('', 'This page embeds the widget Fetch / First Connect supplied. The quote is produced and shown by Fetch inside its own frame. This app does not see or store the quote unless Fetch\'s report import contains it. ', h('strong', null, 'Not yet tested against the real widget.')),
+      h('label', null, h('span', null, inputs.public_widget_enabled, ' Enable the widget page at /q/')),
+      h('label', null, h('span', null, inputs.widget_capture_enabled, ' Record raw widget events (ready / init / complete) for inspection'), h('span', { class: 'muted' }, 'Off by default: what the "complete" event contains, and whether storing it is permitted, is not documented. Events are stored as received and are never counted as quotes.')),
+      field('Optional notice shown above the widget', inputs.public_disclosure_text, 'Wording is yours/Fetch\'s to decide. Shared with the lead form below.'),
+      h('button', { type: 'submit' }, 'Save widget settings'),
+      table('Latest raw widget events', ['When', 'Event', 'Visitor', 'Payload (as received)'], wev.rows.map((e) => [fmtTs(e.created_at), e.event, e.visitor_id ? `${e.visitor_id.slice(0, 6)}…` : '—', e.payload_json.slice(0, 300)]), { empty: 'No widget events recorded.' })),
+    h('h2', null, 'Lead form (own form, no quote shown) at /q/lead.html'),
     h('form', { class: 'card', onsubmit: (e) => { e.preventDefault(); save(pubKeys); } },
       banner('', 'Live Fetch quoting is ', h('strong', null, 'disabled'), '. If you turn the form on, visitors can leave details and you get a follow-up, but no quote is shown (no prices are ever invented).'),
       field('Disclosure / consent text shown above the form', inputs.public_disclosure_text, 'Use wording approved by Fetch and your compliance requirements. The form stays off while this is empty.'),

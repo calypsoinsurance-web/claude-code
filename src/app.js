@@ -22,6 +22,11 @@ function createApp({ db, adapter, transport, cfg = cfgDefault }) {
   // ---- public surface: quote page, tracker script, public API. No CRM data. ----
   app.use('/api/public', publicRouter(db, adapter, cfg));
   app.get('/t.js', (req, res) => { res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin'); res.sendFile(path.join(__dirname, 'public', 'quote', 't.js')); });
+  // The public quote pages embed Fetch's widget, so they need a looser policy than the CRM. They contain no CRM data.
+  app.use('/q', (req, res, next) => {
+    res.setHeader('Content-Security-Policy', ["default-src 'self'", "script-src 'self' https://salesfunnelquotesdk.fetchpet.com", "frame-src https://salesfunnelquotesdk.fetchpet.com", "connect-src 'self' https://*.fetchpet.com", "style-src 'self' 'unsafe-inline'", "img-src 'self' data: https:", "frame-ancestors 'none'", "form-action 'self'"].join('; '));
+    next();
+  });
   app.use('/q', express.static(path.join(__dirname, 'public', 'quote')));
 
   // ---- sign in ----

@@ -5,30 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" href="data:,">
   <title>Pet insurance quote</title>
-  <link rel="stylesheet" href="quote.css">
+  <link rel="stylesheet" href="widget.css">
+  <!-- Fetch's widget script, loaded before our handler script, same order as the supplied snippet. -->
+  <script src="https://salesfunnelquotesdk.fetchpet.com/fetchQuoteWidget/1.0.0/sdk.js"></script>
 </head>
 <body>
-  <main id="app">
+  <main>
     <h1>Get a pet insurance quote</h1>
     <p id="unavailable" hidden>This page is not accepting requests yet. Please check back soon.</p>
-    <form id="form" hidden novalidate>
-      <p id="disclosure" class="disclosure"></p>
-      <fieldset><legend>About you</legend>
-        <label for="name">Full name</label><input id="name" autocomplete="name" required maxlength="120">
-        <label for="email">Email</label><input id="email" type="email" autocomplete="email" required>
-        <label for="phone">Phone (optional)</label><input id="phone" type="tel" autocomplete="tel" maxlength="40">
-        <label for="state">State (2 letters, optional)</label><input id="state" maxlength="2" autocomplete="address-level1">
-      </fieldset>
-      <div id="pets"></div>
-      <button type="button" id="addPet" class="secondary">Add another pet</button>
-      <div class="hp" aria-hidden="true"><label for="website">Leave this empty</label><input id="website" tabindex="-1" autocomplete="off"></div>
-      <label class="check"><input id="consent" type="checkbox" required> I have read the notice above and agree.</label>
-      <button type="submit" id="go">Get my quote</button>
-      <p id="error" role="alert"></p>
-    </form>
-    <section id="result" aria-live="polite"></section>
+    <p id="notice" class="notice" hidden></p>
+    <div id="quoteForm"></div>
+    <p id="problem" role="alert" hidden>The quote form could not be loaded. Please try again later.</p>
   </main>
   <script src="/t.js" async></script>
-  <script src="quote.js"></script>
+  <script src="widget.js"></script>
 </body>
 </html>

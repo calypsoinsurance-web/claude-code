@@ -29,7 +29,7 @@ function privateRouter(db, transport, cfg) {
   r.use(express.json({ limit: '200kb' }));
 
   // ---------- settings & status ----------
-  const SETTING_KEYS = new Set([...reports.DECISIONS.map((d) => d.key), 'reminder_enabled', 'reminder_email_confirmed', 'reminder_hour', 'reminder_timezone', 'public_form_enabled', 'public_disclosure_text', 'deployment_note', 'backup_note']);
+  const SETTING_KEYS = new Set([...reports.DECISIONS.map((d) => d.key), 'reminder_enabled', 'reminder_email_confirmed', 'reminder_hour', 'reminder_timezone', 'public_form_enabled', 'public_widget_enabled', 'widget_capture_enabled', 'public_disclosure_text', 'deployment_note', 'backup_note']);
   r.get('/settings', (req, res) => {
     res.json({
       settings: allSettings(db), decisions: reports.DECISIONS, adminEmail: cfg.adminEmail,
@@ -53,7 +53,7 @@ function privateRouter(db, transport, cfg) {
     val('reminder_hour', (x) => /^\d{1,2}$/.test(x) && Number(x) <= 23, 'Hour must be 0-23');
     for (const d of reports.DECISIONS.filter((x) => x.options)) val(d.key, (x) => d.options.includes(x), `${d.key} must be one of ${d.options.join(', ')}`);
     if (next.reporting_currency) next.reporting_currency = next.reporting_currency.toUpperCase();
-    for (const k of ['reminder_enabled', 'reminder_email_confirmed', 'public_form_enabled']) if (k in next && next[k] != null) next[k] = next[k] === 'true' ? 'true' : 'false';
+    for (const k of ['reminder_enabled', 'reminder_email_confirmed', 'public_form_enabled', 'public_widget_enabled', 'widget_capture_enabled']) if (k in next && next[k] != null) next[k] = next[k] === 'true' ? 'true' : 'false';
     tx(db, () => {
       for (const [k, v] of Object.entries(next)) setSetting(db, k, v);
       const s = allSettings(db);
@@ -62,6 +62,7 @@ function privateRouter(db, transport, cfg) {
     });
     res.json({ ok: true });
   });
+  r.get('/widget-events', (req, res) => res.json({ rows: db.prepare('SELECT id,visitor_id,event,payload_json,page_url,created_at FROM widget_events ORDER BY id DESC LIMIT 50').all() }));
   r.get('/integrations', (req, res) => res.json({ integrations: integrationStatuses(db, req.app.locals.fetchAdapter) }));
 
   // ---------- reports ----------

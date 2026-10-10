@@ -42,7 +42,7 @@ test('public API exposes no CRM records and public customers cannot list or fetc
     assert.ok([401, 404, 405].includes(r.status), `${p} -> ${r.status}`);
   }
   const cfgRes = await t.call('GET', '/api/public/config', undefined, { noCookie: true });
-  assert.deepEqual(Object.keys(cfgRes.body).sort(), ['disclosure', 'formEnabled', 'trackingEnabled']);
+  assert.deepEqual(Object.keys(cfgRes.body).sort(), ['disclosure', 'formEnabled', 'trackingEnabled', 'widget', 'widgetNotice']);
   await t.close();
 });
 

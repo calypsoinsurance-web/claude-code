@@ -1,0 +1,8 @@
+:root { color-scheme: light dark; }
+body { font:16px/1.5 system-ui,sans-serif; margin:0; background:Canvas; color:CanvasText; }
+main { max-width:900px; margin:0 auto; padding:1rem; }
+.notice { border-left:4px solid #0b5cad; padding:.5rem 1rem; white-space:pre-wrap; }
+/* Container sizing exactly as in Fetch's "Widget Container Setup" instructions */
+#quoteForm { display:block; position:relative; width:100%; max-width:100%; height:520px; }
+@media (max-width: 1200px) { #quoteForm { height:620px; } }
+@media (max-width: 768px) { #quoteForm { height:680px; } }

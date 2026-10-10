@@ -12,6 +12,13 @@ const INTEGRATIONS = [
     docs: ['https://www.fetchpet.com/partners'],
   },
   {
+    key: 'fetch_widget', name: 'Fetch quote widget (embedded form)',
+    documented: 'Yes, by material supplied by First Connect for partner FC16191: an embed snippet (events ready/init/complete, init, invoke) and a container-setup PDF. The payload of the "complete" event and what Fetch reports back are NOT documented in that material.',
+    availableToAccount: 'Supplied to you by First Connect; written confirmation of use on your own domain not yet seen.',
+    tested: false, implemented: true, fallback: 'Fetch / First Connect report import (CSV/XLSX)',
+    docs: ['Supplied files: quote-sdk-firstconnect_FC16191.html, Widget_Container_Setup_4.pdf'],
+  },
+  {
     key: 'meta', name: 'Meta Ads (Facebook + Instagram)',
     documented: 'Marketing API Insights with breakdowns incl. publisher_platform / platform_position (per search snippet of Meta breakdown docs). Link-click field names and definitions not verified here.',
     availableToAccount: 'Unknown — needs a Meta app, ads_read permission and app review/access level as Meta requires.',
@@ -45,7 +52,7 @@ function integrationStatuses(db, fetchAdapter) {
   const rows = new Map(db.prepare('SELECT * FROM integration_status').all().map((r) => [r.key, r]));
   return INTEGRATIONS.map((i) => {
     const r = rows.get(i.key);
-    const live = i.key === 'fetch' ? fetchAdapter.status() : { state: 'not_implemented', detail: 'No automatic sync implemented; documentation not verified and no tested credentials.' };
+    const live = i.key === 'fetch_widget' ? { state: 'page_built_untested', detail: 'Page built from the supplied snippet; the real widget script could not be loaded in the build environment, so it has not been run.' } : i.key === 'fetch' ? fetchAdapter.status() : { state: 'not_implemented', detail: 'No automatic sync implemented; documentation not verified and no tested credentials.' };
     return { ...i, live, lastSuccessAt: r ? r.last_success_at : null, lastError: r ? r.last_error : null, lastErrorAt: r ? r.last_error_at : null };
   });
 }
