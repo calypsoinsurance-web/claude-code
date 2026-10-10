@@ -122,3 +122,14 @@ test('apply-decisions fills only empty settings and never overwrites later chang
   assert.deepEqual(applyDecisions(db), []); // idempotent
   applyDecisions(db, { overwrite: true }); assert.equal(getSetting(db, 'attribution_lookback_days'), '30');
 });
+
+test('import defaults setting: validated JSON with allowed keys only; approved decision pre-sets the pet-carrier filter', async () => {
+  const { t } = await setup();
+  assert.equal((await t.call('PUT', '/api/settings', { import_defaults_commissions: 'not json' })).status, 400);
+  assert.equal((await t.call('PUT', '/api/settings', { import_defaults_commissions: '{"evil":1}' })).status, 400);
+  const fs = require('node:fs'); const path = require('node:path');
+  const d = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'config', 'decisions.json'), 'utf8')).settings.import_defaults_commissions;
+  assert.deepEqual(JSON.parse(d), { filter_column: 'Carrier', filter_values: ['Fetch'], currency: 'USD' });
+  assert.equal((await t.call('PUT', '/api/settings', { import_defaults_commissions: d })).status, 200);
+  await t.close();
+});

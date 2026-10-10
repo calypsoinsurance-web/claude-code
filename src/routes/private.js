@@ -35,7 +35,7 @@ function privateRouter(db, transport, cfg) {
   r.use(express.json({ limit: '200kb' }));
 
   // ---------- settings & status ----------
-  const SETTING_KEYS = new Set([...reports.DECISIONS.map((d) => d.key), 'reminder_enabled', 'reminder_email_confirmed', 'reminder_hour', 'reminder_timezone', 'public_form_enabled', 'public_widget_enabled', 'widget_capture_enabled', 'public_disclosure_text', 'deployment_note', 'backup_note']);
+  const SETTING_KEYS = new Set([...reports.DECISIONS.map((d) => d.key), 'reminder_enabled', 'reminder_email_confirmed', 'reminder_hour', 'reminder_timezone', 'public_form_enabled', 'public_widget_enabled', 'widget_capture_enabled', 'public_disclosure_text', 'deployment_note', 'backup_note', 'import_defaults_commissions']);
   r.get('/settings', (req, res) => {
     res.json({
       settings: (({ admin_password_hash, ...rest }) => rest)(allSettings(db)), decisions: reports.DECISIONS, adminEmail: cfg.adminEmail,
@@ -51,6 +51,11 @@ function privateRouter(db, transport, cfg) {
       next[k] = v === null || v === '' ? null : String(v).trim();
     }
     const val = (k, fn, msg) => { if (next[k] != null && !fn(next[k])) throw bad(msg); };
+    if (next.import_defaults_commissions != null) {
+      let o; try { o = JSON.parse(next.import_defaults_commissions); } catch { throw bad('Import defaults must be valid JSON'); }
+      const allowed = ['filter_column', 'filter_values', 'currency', 'carrier', 'receipt_values', 'reversal_values', 'adjustment_values', 'sign_convention', 'amount_sign'];
+      if (!o || typeof o !== 'object' || Array.isArray(o) || Object.keys(o).some((k) => !allowed.includes(k))) throw bad(`Import defaults may only use: ${allowed.join(', ')}`);
+    }
     val('reporting_timezone', tzOk, 'Not a valid IANA time zone (e.g. America/New_York)');
     val('reminder_timezone', tzOk, 'Not a valid IANA time zone');
     val('reporting_currency', (x) => /^[A-Za-z]{3}$/.test(x), 'Currency must be a 3-letter code');

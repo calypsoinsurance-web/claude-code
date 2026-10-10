@@ -13,6 +13,7 @@
     "reminder_hour": "8",
     "reminder_timezone": "America/New_York",
     "deployment_note": "Render (app as built), private subdomain of christinemikhailov.com. Not deployed yet.",
-    "backup_note": "Off-server backup to Google Cloud Storage requested; not built yet. Manual 'npm run backup' until then."
+    "backup_note": "Off-server backup to Google Cloud Storage requested; not built yet. Manual 'npm run backup' until then.",
+    "import_defaults_commissions": "{\"filter_column\": \"Carrier\", \"filter_values\": [\"Fetch\"], \"currency\": \"USD\"}"
   }
 }

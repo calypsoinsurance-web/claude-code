@@ -32,7 +32,7 @@ npm run demo          # runs the app on it; every page shows a purple DEMO DATA 
 Your real database is `data/crm.sqlite` and is never touched by the demo.
 
 ### Run the tests
-`npm test` (60 automated tests: calculations, imports, attribution, security, quote retries, reminders).
+`npm test` (61 automated tests: calculations, imports, attribution, security, quote retries, reminders).
 
 ## Getting your data in
 1. **Imports → New import**, pick the type, choose your file, match columns, set the "what the file means" options, **Preview** (nothing saved), then **Commit**.

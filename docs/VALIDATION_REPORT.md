@@ -19,6 +19,7 @@ synthetic data in automated tests.
 - Hosting direction: Render with the app as built, on a private subdomain of christinemikhailov.com (spelling confirmed). Vercel (needs a Postgres port; unverified file-system and cron limits) and Base44 (a rebuild on its builder) were considered and not chosen. **Not deployed; nothing purchased.** Render custom-domain terms/cost still to be verified.
 - Backups: you asked for automatic backup to Google Cloud Storage. **Not built or researched yet**; you were not sure whether you have a Google Cloud project/billing. Manual `npm run backup` until then.
 
+- Commission imports: only lines whose **Carrier = "Fetch"** (your answer) are imported by default (pre-filled on the import screen from `config/decisions.json`; unverified against a real pet statement; excluded lines are always shown).
 - Widget metaData: **no extra keys are sent to Fetch** (you declined the visitor-ID pass-through). Existing partner identifiers stay verbatim. Attribution for widget quotes will rely on our own tracker (visitor ID recorded in the visitor's browser and linked to the widget `complete` event on the same page) once the real event's field names are known.
 
 **Still open:**

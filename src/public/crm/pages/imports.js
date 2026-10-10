@@ -80,9 +80,15 @@ function optionFields(kind, headers) {
   return { o, rows };
 }
 
-function mapStep(area, kind, st) {
+async function loadDefaults(kind) {
+  try { const s = await api('/settings'); const raw = s.settings[`import_defaults_${kind}`]; return raw ? JSON.parse(raw) : {}; } catch { return {}; }
+}
+
+async function mapStep(area, kind, st) {
+  const defaults = await loadDefaults(kind);
   const mapSel = {};
   const { o, rows } = optionFields(kind, st.headers);
+  for (const [k, v] of Object.entries(defaults)) if (o[k]) o[k].value = Array.isArray(v) ? v.join(', ') : v;
   const mapRows = Object.entries(st.fields).map(([f, label]) => {
     const sel = h('select', { id: `m_${f}` }, h('option', { value: '' }, '— not in file —'), st.headers.map((hd) => h('option', { value: hd, selected: st.suggested[f] === hd }, hd)));
     mapSel[f] = sel;
