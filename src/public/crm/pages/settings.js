@@ -25,6 +25,10 @@ export async function settings(main) {
   inputs.reminder_timezone = h('input', { value: v.reminder_timezone || '', placeholder: 'America/New_York' });
 
   main.replaceChildren(h('h1', null, 'Settings'), msg,
+    h('h2', null, 'Password'),
+    (() => { const cur = h('input', { type: 'password', autocomplete: 'current-password' }); const nw = h('input', { type: 'password', autocomplete: 'new-password', minlength: '12' });
+      return h('form', { class: 'card', onsubmit: async (e) => { e.preventDefault(); try { await api('/change-password', { method: 'POST', body: { current: cur.value, next: nw.value } }); alert('Password changed. Please sign in again.'); location.reload(); } catch (x) { msg.replaceChildren(banner('error', x.message)); } } },
+        h('p', { class: 'muted' }, 'At least 12 characters. A long phrase of several words works well. Changing it signs out every device.'), h('div', { class: 'filters' }, field('Current password', cur), field('New password', nw)), h('button', { type: 'submit' }, 'Change password')); })(),
     h('h2', null, 'Decisions'), h('p', { class: 'muted' }, 'The app does not guess these. Related numbers show N/A (or stay off) until you decide. Changing a rule re-evaluates reports from the stored data; quote snapshots themselves never change.'),
     h('form', { class: 'card', onsubmit: (e) => { e.preventDefault(); save(decisionKeys); } }, h('div', { class: 'filters' }, decisions), h('button', { type: 'submit' }, 'Save decisions')),
     h('h2', null, 'Follow-up reminder emails'),

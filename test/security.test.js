@@ -83,3 +83,18 @@ test('database backup download requires sign-in and the CSRF header, and yields 
   copy.close(); fs.rmSync(path.dirname(file), { recursive: true, force: true });
   await t.close();
 });
+
+test('password can be changed in the app: needs the current password, min length, signs everyone out, new password works', async () => {
+  const t = await start(); await t.login();
+  assert.equal((await t.call('POST', '/api/change-password', { current: 'wrong', next: 'a brand new long passphrase' })).status, 403);
+  assert.equal((await t.call('POST', '/api/change-password', { current: 'correct horse battery staple', next: 'short' })).status, 400);
+  const settings = (await t.call('GET', '/api/settings')).body.settings; assert.equal(settings.admin_password_hash, undefined);
+  assert.equal((await t.call('POST', '/api/change-password', { current: 'correct horse battery staple', next: 'a brand new long passphrase' })).status, 200);
+  assert.equal((await t.call('GET', '/api/customers')).status, 401); // sessions cleared
+  assert.equal((await t.call('POST', '/api/login', { email: 'owner@example.test', password: 'correct horse battery staple' })).status, 401); // old one dead
+  assert.equal((await t.call('POST', '/api/login', { email: 'owner@example.test', password: 'a brand new long passphrase' })).status, 200);
+  assert.equal((await t.call('GET', '/api/customers')).status, 200);
+  assert.equal((await t.call('POST', '/api/change-password', { current: 'a brand new long passphrase', next: 'x'.repeat(5) })).status, 400);
+  assert.equal((await t.call('PUT', '/api/settings', { admin_password_hash: 'scrypt$aa$bb' })).status, 400); // not settable through Settings
+  await t.close();
+});

@@ -8,6 +8,8 @@ const reminders = require('../reminders');
 const { integrationStatuses } = require('../integrations/registry');
 const { toCsv } = require('../csv');
 const crm = require('../crm');
+const auth = require('../auth');
+const rateLimit = require('express-rate-limit');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -36,7 +38,7 @@ function privateRouter(db, transport, cfg) {
   const SETTING_KEYS = new Set([...reports.DECISIONS.map((d) => d.key), 'reminder_enabled', 'reminder_email_confirmed', 'reminder_hour', 'reminder_timezone', 'public_form_enabled', 'public_widget_enabled', 'widget_capture_enabled', 'public_disclosure_text', 'deployment_note', 'backup_note']);
   r.get('/settings', (req, res) => {
     res.json({
-      settings: allSettings(db), decisions: reports.DECISIONS, adminEmail: cfg.adminEmail,
+      settings: (({ admin_password_hash, ...rest }) => rest)(allSettings(db)), decisions: reports.DECISIONS, adminEmail: cfg.adminEmail,
       env: { trackingEnabled: cfg.trackingEnabled, smtpConfigured: !!(cfg.smtp.host && cfg.smtp.from), fetchLiveEnabled: cfg.fetchLiveEnabled, publicBaseUrl: cfg.publicBaseUrl },
       isDemo: getSetting(db, 'is_demo') === 'true',
     });
@@ -68,6 +70,22 @@ function privateRouter(db, transport, cfg) {
   });
   r.get('/widget-events', (req, res) => res.json({ rows: db.prepare('SELECT id,visitor_id,event,payload_json,page_url,created_at FROM widget_events ORDER BY id DESC LIMIT 50').all() }));
   r.get('/integrations', (req, res) => res.json({ integrations: integrationStatuses(db, req.app.locals.fetchAdapter) }));
+
+  // ---------- change password ----------
+  const changeLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false });
+  r.post('/change-password', changeLimiter, (req, res) => {
+    const { current, next } = req.body || {};
+    const stored = getSetting(db, 'admin_password_hash') || cfg.adminPasswordHash;
+    if (typeof current !== 'string' || !auth.verifyPassword(current, stored)) throw bad('Current password is wrong', 403);
+    if (typeof next !== 'string' || next.length < 12 || next.length > 200) throw bad('New password must be 12 to 200 characters');
+    if (next === current) throw bad('New password must be different');
+    tx(db, () => {
+      setSetting(db, 'admin_password_hash', auth.hashPassword(next));
+      db.prepare('DELETE FROM sessions').run(); // signs out every device, including this one
+    });
+    auth.destroySession(db, req, res);
+    res.json({ ok: true });
+  });
 
   // ---------- reports ----------
   r.get('/summary', (req, res) => res.json(reports.summary(db, filtersFrom(req))));

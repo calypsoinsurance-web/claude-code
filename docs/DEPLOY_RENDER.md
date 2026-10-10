@@ -17,7 +17,7 @@ Facts below come from Render's docs as shown in web-search results on 2026-10-10
 2. In Render: **New → Blueprint**, pick the repository and branch. It reads `render.yaml`. Review the plan/price shown before confirming.
 3. When asked for values marked secret, enter:
    - `ADMIN_EMAIL` = calypsoinsurance@gmail.com
-   - `ADMIN_PASSWORD_HASH` = made on your computer with `npm run hash-password -- "your long passphrase"` (paste the value after `ADMIN_PASSWORD_HASH=`; never send me the passphrase)
+   - `ADMIN_PASSWORD_HASH` = a starting hash. Either use the one-time passphrase/hash pair given to you in chat, or make your own with `npm run hash-password -- "your long passphrase"` (never send your real passphrase to anyone). **Sign in once, then use Settings → Password to set your own password immediately.** A password changed in the app overrides this value.
    - `PUBLIC_BASE_URL` = `https://crm.christinemikhailov.com` (once the domain works)
    - `PUBLIC_ALLOWED_ORIGINS` = your website origin, e.g. `https://www.christinemikhailov.com`
    - SMTP values: leave empty for now (reminders stay off).

@@ -5,6 +5,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const cfgDefault = require('./config');
 const auth = require('./auth');
+const { getSetting } = require('./db');
 const { publicRouter } = require('./routes/public');
 const { privateRouter } = require('./routes/private');
 
@@ -32,10 +33,11 @@ function createApp({ db, adapter, transport, cfg = cfgDefault }) {
   // ---- sign in ----
   const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false, skipSuccessfulRequests: true });
   app.post('/api/login', loginLimiter, express.json({ limit: '5kb' }), (req, res) => {
-    if (!cfg.adminEmail || !cfg.adminPasswordHash) return res.status(503).json({ error: 'Sign-in is not configured. Set ADMIN_EMAIL and ADMIN_PASSWORD_HASH (see README).' });
+    if (!cfg.adminEmail || !(cfg.adminPasswordHash || getSetting(db, 'admin_password_hash'))) return res.status(503).json({ error: 'Sign-in is not configured. Set ADMIN_EMAIL and ADMIN_PASSWORD_HASH (see README).' });
     const { email, password } = req.body || {};
     const okEmail = typeof email === 'string' && email.trim().toLowerCase() === cfg.adminEmail;
-    const okPw = typeof password === 'string' && auth.verifyPassword(password, cfg.adminPasswordHash); // always evaluated
+    const stored = getSetting(db, 'admin_password_hash') || cfg.adminPasswordHash; // a password changed in the app overrides the environment value
+    const okPw = typeof password === 'string' && auth.verifyPassword(password, stored); // always evaluated
     if (!(okEmail && okPw)) return res.status(401).json({ error: 'Wrong email or password' });
     auth.createSession(db, res);
     res.json({ ok: true });
