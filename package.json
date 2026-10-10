@@ -11,6 +11,7 @@
     "start": "node --disable-warning=ExperimentalWarning src/server.js",
     "test": "node --disable-warning=ExperimentalWarning --test \"test/*.test.js\"",
     "migrate": "node --disable-warning=ExperimentalWarning src/migrate-cli.js",
+    "apply-decisions": "node --disable-warning=ExperimentalWarning scripts/apply-decisions.js",
     "hash-password": "node scripts/hash-password.js",
     "seed:demo": "node --disable-warning=ExperimentalWarning scripts/seed-demo.js",
     "demo": "DB_PATH=data/demo.sqlite node --disable-warning=ExperimentalWarning src/server.js",

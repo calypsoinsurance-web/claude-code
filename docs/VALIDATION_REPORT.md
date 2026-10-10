@@ -9,18 +9,23 @@ synthetic data in automated tests.
 
 **Requested but NOT delivered (blocked):** live Fetch quote/payment/issuance integration; automatic Meta/TikTok/Google/LinkedIn syncing; Fetch reporting/webhooks.
 
-## 2. Decisions still needed from you (the app does not guess; related figures show N/A or stay off)
+## 2. Decisions
+**Approved by you on 2026-10-10** (stored in `config/decisions.json`; apply with `npm run apply-decisions`; applying them is tested):
+- Reporting time zone America/New_York; currency USD.
+- Attribution lookback 30 days; a direct visit does NOT replace an earlier non-direct source.
+- Acquisition group starts at the customer's first generated quote; returning customers stay in their first group; as-of date 2026-09-30 (a fixed date you update).
+- Cancellations: show issued policies gross with cancelled / not-cancelled counts beside them (net/active treatments not built).
+- Reminder address calypsoinsurance@gmail.com (you confirmed it is yours); daily at 8:00 AM Eastern. Reminders stay OFF until SMTP email is configured and you switch them on. `ADMIN_EMAIL` must still be set on the server.
+- Hosting direction: Render with the app as built, on a private subdomain of christinemikhailov.com (spelling confirmed). Vercel (needs a Postgres port; unverified file-system and cron limits) and Base44 (a rebuild on its builder) were considered and not chosen. **Not deployed; nothing purchased.** Render custom-domain terms/cost still to be verified.
+- Backups: you asked for automatic backup to Google Cloud Storage. **Not built or researched yet**; you were not sure whether you have a Google Cloud project/billing. Manual `npm run backup` until then.
+
+**Still open:**
 | Decision | Effect until decided |
 |---|---|
-| Reporting time zone, currency | Live quote timestamps can't be dated; spend totals hidden. |
-| Attribution lookback window; whether direct visits replace a tracked source | Paid cost-per-quote/policy/buyer = N/A. |
-| Customer with differently-attributed quotes in channel reporting | Interim rule shown on screen: counted under each platform with overlap disclosed, unique total shown. No allocation. |
+| Customer with differently-attributed quotes in channel reporting | Interim disclosed rule: counted under each platform with overlap shown and unique total. No allocation. |
 | Same for buying customers with differently-attributed policies | Same interim disclosure. |
-| Acquisition start event, returning customers, observation end date | Acquisition view off. Only "first quote" and "first group only" are implemented. |
-| Cancellation treatment (gross/net/active) | Issued shown GROSS with cancelled/not-cancelled counts beside it. Expected commission unchanged by cancellation (per brief). |
-| Reminder time and time zone; confirm address | Reminders cannot be enabled. Recipient is always `ADMIN_EMAIL`. |
-| Deployment destination and backup arrangement | Nothing deployed; manual backup script provided. |
-| Customer disclosure/consent wording; tracking/privacy approach | Public form stays off; tracking off. |
+| Customer disclosure/consent wording; tracking/privacy approach | Public form and tracking stay off (wording depends on Fetch's requirements). |
+| Network/placement and other items awaiting Fetch / platform documentation | See `docs/FETCH_DOCUMENTATION_NEEDED.md`. |
 
 ## 3. Architecture (minimal)
 One Node 22 process: Express + built-in SQLite (`node:sqlite`, flagged experimental by Node) on a single database file; static vanilla-JS UI; public router (`/api/public/*`, `/q/`, `/t.js`) separate from the private router (everything else under `/api`, behind session auth). Pure calculation module (`src/calc.js`) tested in isolation. Money: integer cents/micros. Quote snapshots are immutable JSON; attribution rules are applied when reporting (so approving/changing a rule re-evaluates reports without altering stored snapshots).

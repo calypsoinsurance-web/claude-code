@@ -22,7 +22,7 @@ Rules the app enforces: missing data shows **N/A** (never 0); source is never in
 3. Copy the settings file: `cp .env.example .env` (Windows: `copy .env.example .env`).
 4. Make your password hash: `npm run hash-password -- "a long passphrase of 12+ characters"`. Paste the printed `ADMIN_PASSWORD_HASH=…` line into `.env`, and set `ADMIN_EMAIL=` to your email.
 5. Start it: `npm start`, then open http://localhost:3000/app/ and sign in.
-6. First visit **Settings → Decisions** and answer the questions (time zone, currency, attribution rules…). Until you do, the related numbers show N/A on purpose.
+6. Apply your approved decisions with `npm run apply-decisions` (values are in `config/decisions.json`; you can review/change them under **Settings → Decisions**). Until decisions exist, the related numbers show N/A on purpose.
 
 ### Try the demo (synthetic data, separate database)
 ```
@@ -32,7 +32,7 @@ npm run demo          # runs the app on it; every page shows a purple DEMO DATA 
 Your real database is `data/crm.sqlite` and is never touched by the demo.
 
 ### Run the tests
-`npm test` (49 automated tests: calculations, imports, attribution, security, quote retries, reminders).
+`npm test` (50 automated tests: calculations, imports, attribution, security, quote retries, reminders).
 
 ## Getting your data in
 1. **Imports → New import**, pick the type, choose your file, match columns, set the "what the file means" options, **Preview** (nothing saved), then **Commit**.

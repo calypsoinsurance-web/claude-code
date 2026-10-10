@@ -98,3 +98,15 @@ test('settings validation rejects bad values and unknown keys', async () => {
   assert.equal((await t.call('PUT', '/api/settings', { public_form_enabled: 'true' })).status, 400); // needs disclosure text
   await t.close();
 });
+
+test('approved decisions file applies cleanly and passes the same validation as the Settings page', async () => {
+  const fs = require('node:fs'); const path = require('node:path');
+  const { settings } = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'config', 'decisions.json'), 'utf8'));
+  const { t } = await setup();
+  const { reminder_enabled, ...body } = settings;
+  const r = await t.call('PUT', '/api/settings', body);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const s = (await t.call('GET', '/api/settings')).body.settings;
+  assert.equal(s.attribution_lookback_days, '30'); assert.equal(s.reminder_enabled, undefined);
+  await t.close();
+});

@@ -1,0 +1,18 @@
+{
+  "_comment": "Decisions approved by the owner on 2026-10-10. Applied to a database with: npm run apply-decisions",
+  "settings": {
+    "reporting_timezone": "America/New_York",
+    "reporting_currency": "USD",
+    "attribution_lookback_days": "30",
+    "direct_rule": "direct_does_not_replace",
+    "acquisition_event": "first_quote",
+    "returning_customers": "first_only",
+    "acquisition_observation_end": "2026-09-30",
+    "cancellation_treatment": "gross_only_for_now",
+    "reminder_email_confirmed": "true",
+    "reminder_hour": "8",
+    "reminder_timezone": "America/New_York",
+    "deployment_note": "Render (app as built), private subdomain of christinemikhailov.com. Not deployed yet.",
+    "backup_note": "Off-server backup to Google Cloud Storage requested; not built yet. Manual 'npm run backup' until then."
+  }
+}
