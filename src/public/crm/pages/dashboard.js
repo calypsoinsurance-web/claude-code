@@ -10,7 +10,24 @@ export async function dashboard(main) {
   const state = { from: daysAgo(29), to: todayStr(), platform: '', campaign: '', ad: '', tab: 'calendar' };
   const opts = await api('/filter-options');
   const body = h('div');
-  main.replaceChildren(h('h1', null, 'Dashboard'), filters(), body);
+  const att = h('section', { class: 'card attention', 'aria-label': 'Needs your attention' });
+  main.replaceChildren(h('h1', null, 'Dashboard'), att, filters(), body);
+  loadAttention();
+
+  async function loadAttention() {
+    try {
+      const [over, today, rev, set] = await Promise.all([api('/followups?filter=overdue'), api('/followups?filter=today'), api('/review'), api('/settings')]);
+      const reviewN = rev.items.length + rev.unmatchedCommissions.length;
+      const missing = set.decisions.filter((d) => !set.settings[d.key]).length;
+      const row = (n, one, many, none, href, cta) => h('li', { class: n ? null : 'clear' }, h('span', { class: 'count' }, n ? String(n) : '✓'), h('span', null, n === 0 ? none : n === 1 ? one : many), n ? h('a', { class: 'btn secondary', href }, cta) : null);
+      att.replaceChildren(h('h2', null, 'Needs your attention'),
+        h('ul', null,
+          row(over.rows.length, 'overdue follow-up', 'overdue follow-ups', 'No overdue follow-ups', '#/followups', 'Open follow-ups'),
+          row(today.rows.length, 'follow-up due today', 'follow-ups due today', 'Nothing due today', '#/followups', 'Open follow-ups'),
+          row(reviewN, 'imported item waiting for your decision (an uncertain customer match or an unmatched commission line)', 'imported items waiting for your decision (uncertain customer matches or unmatched commission lines)', 'No imported items waiting for review', '#/imports', 'Open imports'),
+          row(missing, 'setup decision still open — some numbers show N/A until it is made', 'setup decisions still open — some numbers show N/A until they are made', 'All setup decisions are made', '#/settings', 'Open settings')));
+    } catch (e) { att.replaceChildren(h('h2', null, 'Needs your attention'), h('p', { class: 'muted' }, `Could not load: ${e.message}`)); }
+  }
 
   function filters() {
     const from = h('input', { type: 'date', value: state.from }); const to = h('input', { type: 'date', value: state.to });
