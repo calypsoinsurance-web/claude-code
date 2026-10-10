@@ -96,3 +96,8 @@ td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
 dl { display:grid; grid-template-columns:max-content minmax(0,1fr); gap:.25rem 1rem; margin:0; } dt { color:var(--muted); } dd { margin:0; overflow-wrap:anywhere; }
 @media (max-width:640px) { dl { grid-template-columns:minmax(0,1fr); } .map-row { grid-template-columns:1fr; } main { padding:.75rem .75rem 3rem; } h1 { font-size:1.55rem; } }
 @media (prefers-reduced-motion: no-preference) { button, .btn, nav a { transition:background .15s, filter .15s; } }
+@media (max-width: 640px) {
+  header.top nav { flex:1 1 100%; order:3; }
+  nav ul { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:.25rem; }
+  nav a { text-align:center; padding:.5rem .25rem; }
+}
