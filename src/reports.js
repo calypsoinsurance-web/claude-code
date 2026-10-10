@@ -73,6 +73,11 @@ function summary(db, f) {
   const quoteEvents = buildQuoteEvents(db, ctx).filter((e) => inRange(e.date, from, to));
   const quotedCustomers = calc.uniqueCustomers(quoteEvents);
 
+  // --- quote requests (lead form). Requests are NOT quotes and never enter quote, policy or cost numbers. ---
+  const reqRows = ctx.tz ? db.prepare('SELECT customer_id, status, created_at FROM quote_requests WHERE customer_id IS NOT NULL').all()
+    .filter((r) => inRange(localDate(r.created_at, ctx.tz), from, to)) : null;
+  const quoteRequests = reqRows ? { people: new Set(reqRows.map((r) => r.customer_id)).size, requests: reqRows.length, waiting: reqRows.filter((r) => r.status !== 'completed').length } : null;
+
   // --- policies ---
   const pol = db.prepare('SELECT p.*, q.attribution_snapshot_json AS qsnap, q.quoted_at AS qat FROM policies p LEFT JOIN quotes q ON q.id = p.quote_id WHERE p.is_issued = 1 AND p.issue_date IS NOT NULL').all()
     .filter((p) => inRange(p.issue_date, from, to));
@@ -199,7 +204,7 @@ function summary(db, f) {
     filters: f, currency: ctx.currency, timezone: ctx.tz, blockers, notes,
     calendar: {
       advertising: ads,
-      quotedCustomers, quoteEvents: quoteEvents.length,
+      quotedCustomers, quoteEvents: quoteEvents.length, quoteRequests,
       issuedPolicies: policyEvents.length, buyingCustomers,
       issuedPoliciesCancelledSoFar: cancelledCount, issuedPoliciesNotCancelled: policyEvents.length - cancelledCount,
       cancellationNote: 'Issued policies are shown GROSS. Cancelled and not-cancelled counts are shown beside them; the net/active treatment is a pending decision.',

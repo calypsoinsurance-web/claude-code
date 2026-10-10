@@ -23,6 +23,22 @@ test('live quoting disabled: lead is saved, no quote is fabricated, retries do n
   await t.close();
 });
 
+test('dashboard counts lead-form requests separately from quotes, N/A without a timezone', async () => {
+  const t = await start(); open(t);
+  await t.call('POST', '/api/public/quote', body(), { noCookie: true });
+  await t.call('POST', '/api/public/quote', body({ idempotency_key: 'zyxwvutsrqponmlkjihgfe0987654321' }), { noCookie: true }); // same person, second request
+  const today = new Date().toISOString().slice(0, 10);
+  const wide = { from: '2000-01-01', to: '2100-01-01' };
+  t.setSetting('reporting_timezone', '');
+  assert.equal(reports.summary(t.db, wide).calendar.quoteRequests, null);
+  t.setSetting('reporting_timezone', 'America/New_York');
+  const c = reports.summary(t.db, wide).calendar;
+  assert.deepEqual(c.quoteRequests, { people: 1, requests: 2, waiting: 2 });
+  assert.equal(c.quotedCustomers, 0); assert.equal(c.quoteEvents, 0);
+  assert.equal(reports.summary(t.db, { from: '2000-01-01', to: '2000-01-02' }).calendar.quoteRequests.requests, 0);
+  await t.close();
+});
+
 test('form is refused until disclosure text exists and form is enabled', async () => {
   const t = await start();
   assert.equal((await t.call('POST', '/api/public/quote', body(), { noCookie: true })).status, 503);

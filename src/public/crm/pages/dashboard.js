@@ -68,6 +68,7 @@ export async function dashboard(main) {
       h('h2', null, 'Advertising'), h('div', { class: 'grid' }, adv),
       h('h2', null, 'Customers and policies in this period'),
       h('div', { class: 'grid' },
+        stat('Quote requests (lead form)', c.quoteRequests ? int(c.quoteRequests.people) : h('span', { class: 'na' }, 'N/A'), c.quoteRequests ? `${int(c.quoteRequests.requests)} requests, ${int(c.quoteRequests.waiting)} still waiting for a quote. Requests are not quotes and are not counted below.` : 'Set the reporting timezone to count requests by day'),
         stat('Unique quoted customers', int(c.quotedCustomers), `${int(c.quoteEvents)} quote events; multiple pets/repeat quotes count once`),
         stat('Issued policies (gross)', int(c.issuedPolicies), `${c.issuedPoliciesCancelledSoFar} cancelled so far · ${c.issuedPoliciesNotCancelled} not cancelled`),
         stat('Unique buying customers', int(c.buyingCustomers), 'Customers with ≥1 confirmed issued policy')),
