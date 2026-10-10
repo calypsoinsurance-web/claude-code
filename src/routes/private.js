@@ -207,7 +207,7 @@ function privateRouter(db, transport, cfg) {
     const kind = String(req.query.kind || '');
     const filename = decodeURIComponent(String(req.headers['x-filename'] || ''));
     if (!filename) throw bad('Missing file name');
-    res.json(await imports.stage(db, kind, filename, req.body));
+    res.json(await imports.stage(db, kind, filename, req.body, { headerRow: req.query.header_row ? Number(req.query.header_row) : undefined }));
   }));
   const runImport = (commit) => (req, res) => {
     const b = req.body || {};

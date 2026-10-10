@@ -23,6 +23,7 @@ export async function imports(main) {
 function newImport(body) {
   const kindSel = h('select', null, KINDS.map(([k, l]) => h('option', { value: k }, l)));
   const file = h('input', { type: 'file', accept: '.csv,.xlsx' });
+  const headerRow = h('input', { type: 'number', min: '1', placeholder: 'auto' });
   const msg = h('div', { role: 'status' });
   const stageArea = h('div');
   const desc = h('p', { class: 'muted' }, KINDS[0][2]);
@@ -34,10 +35,10 @@ function newImport(body) {
       if (!file.files[0]) return msg.replaceChildren(banner('error', 'Choose a file first.'));
       try {
         const f = file.files[0];
-        const r = await api(`/imports/upload?kind=${kindSel.value}`, { method: 'POST', raw: await f.arrayBuffer(), headers: { 'X-Filename': encodeURIComponent(f.name), 'Content-Type': 'application/octet-stream' } });
+        const r = await api(`/imports/upload?kind=${kindSel.value}${headerRow.value ? `&header_row=${Number(headerRow.value)}` : ''}`, { method: 'POST', raw: await f.arrayBuffer(), headers: { 'X-Filename': encodeURIComponent(f.name), 'Content-Type': 'application/octet-stream' } });
         mapStep(stageArea, kindSel.value, r);
       } catch (x) { msg.replaceChildren(banner('error', x.message)); }
-    } }, field('What are you importing?', kindSel), field('File (.csv or .xlsx)', file), h('button', { type: 'submit' }, 'Read file')),
+    } }, field('What are you importing?', kindSel), field('File (.csv or .xlsx)', file), field('Header row number (optional)', headerRow, 'Leave blank: the app finds the table header itself and tells you which row it used.'), h('button', { type: 'submit' }, 'Read file')),
     desc, msg, stageArea);
 }
 
@@ -65,6 +66,7 @@ function optionFields(kind, headers) {
   if (kind === 'commissions') {
     add('currency', 'Statement currency*', text({ maxlength: 3, placeholder: 'USD' }));
     add('statement_ref', 'Statement reference (if not a column)', text({ placeholder: '2026-03 statement' }));
+    add('txn_date_fixed', 'Date to use if the file has no date column', text({ placeholder: 'in the date format chosen above' }), 'Applied to every line. Use the date that matches your rule for when commission counts as received (e.g. the statement\'s "Date Sent" or the statement month end). Do not use a policy effective date.');
     add('carrier', 'Carrier (optional, helps matching)', text());
     add('sign_convention', 'How does the statement show reversals?*', sel([['', 'Choose…'], ['signed', 'Reversals are negative numbers; receipts positive'], ['type_column', 'A type column says receipt / reversal / adjustment']]));
     add('amount_sign', 'With a type column, are amounts…', sel([['', 'Choose…'], ['as_is', 'Already signed'], ['absolute', 'Always positive (app applies the sign for receipts/reversals)']]));
@@ -102,6 +104,9 @@ function mapStep(area, kind, st) {
   };
   area.replaceChildren(
     st.alreadyImportedAs ? banner('', `This exact file was already imported (import #${st.alreadyImportedAs.importId}, ${fmtTs(st.alreadyImportedAs.at)}). Importing again will not create duplicates.`) : null,
+    h('p', null, `Table header found on row ${st.headerRow}. ${st.rowCount} data row(s) will be read.`),
+    st.preamble.length ? h('details', { class: 'card' }, h('summary', null, `Lines above the table (${st.preamble.length}) — statement details to copy values from`), h('ul', null, st.preamble.map((p) => h('li', null, `Row ${p.row}: ${p.text}`)))) : null,
+    st.skipped.length ? banner('', h('strong', null, `${st.skipped.length} row(s) below the table were skipped and will not be imported: `), st.skipped.map((x) => `row ${x.row} (${x.reason}: ${x.text.slice(0, 80)})`).join('; ')) : null,
     h('h2', null, `Step 2: match your columns (${st.rowCount} data rows)`),
     h('p', { class: 'muted' }, 'Suggestions are only hints based on header names. Check each one. Fields marked * are required.'),
     table('First rows of your file', st.headers, st.sample.map((r) => st.headers.map((hd) => r[hd])), { empty: '' }),
@@ -116,6 +121,7 @@ function summary(r, committed) {
   return h('div', null,
     banner(committed ? 'ok' : '', h('strong', null, committed ? 'Import saved. ' : 'Preview only — nothing has been saved. '),
       `${r.total} rows: ${c.created} new, ${c.updated} updated, ${c.unchanged} already present (skipped), ${c.review} sent to review, ${c.error} with errors.`),
+    (() => { if (!r.commissionTotalsCents) return null; const stated = r.skippedRows.flatMap((x) => x.numbers); const net = r.commissionTotalsCents.receipt + r.commissionTotalsCents.reversal + r.commissionTotalsCents.adjustment; if (!stated.length) return h('p', { class: 'muted' }, 'The file states no total, so there is nothing to reconcile against.'); const ok = stated.includes(net); return banner(ok ? 'ok' : 'error', ok ? `Reconciled: the total stated in the file (${cents(net)}) equals the sum of the lines to be imported.` : `Does NOT reconcile: the file states ${stated.map((v) => cents(v)).join(' / ')}, but the lines to be imported sum to ${cents(net)}. Check the type mapping and the row errors before committing.`); })(),
     r.commissionTotalsCents ? h('p', null, `Totals in this file — receipts ${cents(r.commissionTotalsCents.receipt)}, reversals ${cents(r.commissionTotalsCents.reversal)}, adjustments ${cents(r.commissionTotalsCents.adjustment)}. Check these against the statement.`) : null,
     Object.keys(r.notes).length ? h('ul', null, Object.entries(r.notes).map(([k, v]) => h('li', null, `${v} row(s): ${k}`))) : null,
     ['status', 'frequency', 'types'].map((k) => Object.keys(r.distinct[k]).length ? h('p', { class: 'muted' }, `Distinct ${k} values found: ${Object.entries(r.distinct[k]).map(([a, b]) => `${a} (${b})`).join(', ')}`) : null),

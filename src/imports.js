@@ -37,12 +37,12 @@ const FIELDS = {
     payment_frequency: 'Payment frequency', provider_quote_id: 'Originating provider quote ID',
   },
   commissions: {
-    txn_date: 'Transaction / payment date*', amount: 'Amount*', policy_number: 'Policy number', carrier: 'Carrier',
+    txn_date: 'Transaction / payment date', amount: 'Amount*', policy_number: 'Policy number', carrier: 'Carrier',
     txn_type: 'Transaction type', statement_ref: 'Statement reference',
   },
 };
 const REQUIRED = {
-  ads: ['report_date', 'spend'], quotes: ['quote_date'], policies: ['policy_number'], commissions: ['txn_date', 'amount'],
+  ads: ['report_date', 'spend'], quotes: ['quote_date'], policies: ['policy_number'], commissions: ['amount'],
 };
 const SYNONYMS = {
   report_date: ['date', 'day', 'reporting starts', 'report date', 'reporting date'], spend: ['spend', 'amount spent', 'cost', 'total spent'],
@@ -54,9 +54,9 @@ const SYNONYMS = {
   customer_state: ['state'], provider_customer_id: ['customer id', 'customer number'], pet_name: ['pet name', 'pet'], species: ['species', 'pet type', 'type'],
   breed: ['breed'], pet_age: ['age', 'pet age'], provider_pet_id: ['pet id'], provider_quote_id: ['quote id', 'quote number'], quote_date: ['quote date', 'date quoted', 'created'],
   premium: ['premium', 'monthly premium', 'price'], payment_frequency: ['payment frequency', 'frequency', 'billing frequency'], quote_status: ['quote status', 'status'],
-  policy_number: ['policy number', 'policy #', 'policy no', 'policy'], carrier: ['carrier', 'underwriter'], policy_status: ['policy status', 'status'],
+  policy_number: ['policy number', 'policy #', 'policy#', 'policy no', 'policy'], carrier: ['carrier', 'underwriter'], policy_status: ['policy status', 'status'],
   issue_date: ['issue date', 'issued', 'purchase date'], effective_date: ['effective date', 'start date'], cancellation_date: ['cancellation date', 'cancelled date'],
-  txn_date: ['payment date', 'transaction date', 'date paid', 'date'], amount: ['amount', 'commission', 'commission amount'], txn_type: ['type', 'transaction type'], statement_ref: ['statement', 'statement id', 'statement reference'],
+  txn_date: ['payment date', 'transaction date', 'date paid', 'date'], amount: ['amount', 'commission', 'commission amount'], txn_type: ['type', 'transaction type', 'transtype', 'trans type'], statement_ref: ['statement', 'statement id', 'statement reference'],
   utm_source: ['utm source', 'utm_source'], utm_medium: ['utm medium', 'utm_medium'], utm_campaign: ['utm campaign', 'utm_campaign'], utm_content: ['utm content', 'utm_content'],
 };
 
@@ -84,7 +84,7 @@ function validateOptions(kind, mapping, o) {
   const m = (f) => !!mapping[f];
   for (const f of REQUIRED[kind]) if (!m(f)) errs.push(`Map a column for "${FIELDS[kind][f].replace('*', '')}".`);
   const dateFields = { ads: ['report_date'], quotes: ['quote_date'], policies: ['issue_date', 'effective_date', 'cancellation_date'], commissions: ['txn_date'] }[kind];
-  if (dateFields.some(m) && !['iso', 'mdy', 'dmy'].includes(o.date_format)) errs.push('Choose how dates are written in this file (YYYY-MM-DD, MM/DD/YYYY or DD/MM/YYYY).');
+  if ((dateFields.some(m) || (kind === 'commissions' && norm(o.txn_date_fixed))) && !['iso', 'mdy', 'dmy'].includes(o.date_format)) errs.push('Choose how dates are written in this file (YYYY-MM-DD, MM/DD/YYYY or DD/MM/YYYY).');
   if (kind === 'ads') {
     if (!PLATFORMS.includes(o.platform)) errs.push('Choose the advertising platform.');
     if (!LEVELS.includes(o.level)) errs.push('Choose what each row represents (account, campaign, ad group/set, or ad).');
@@ -107,8 +107,9 @@ function validateOptions(kind, mapping, o) {
     if (o.sign_convention === 'type_column') {
       if (!m('txn_type')) errs.push('Map the transaction type column.');
       if (!['as_is', 'absolute'].includes(o.amount_sign)) errs.push('Say whether amounts in the type-column format are already signed or always positive.');
-      for (const t of ['receipt', 'reversal', 'adjustment']) if (!(o[`${t}_values`] || []).length) { if (t !== 'adjustment') errs.push(`List the type values that mean "${t}".`); }
+      if (!(o.receipt_values || []).length) errs.push('List the type values that mean "receipt". Reversal/adjustment values are optional: any type you do not list becomes a visible row error, never a silent guess.');
     }
+    if (!m('txn_date') && !norm(o.txn_date_fixed)) errs.push('This file needs a date: map a payment-date column, or enter the date to use for every line in "Date to use if the file has no date column".');
     if (!m('statement_ref') && !norm(o.statement_ref)) errs.push('Map a statement reference column or type one (e.g. "2026-03 statement").');
     if (!/^[A-Za-z]{3}$/.test(o.currency || '')) errs.push('Enter the statement currency (3-letter code).');
   }
@@ -116,6 +117,12 @@ function validateOptions(kind, mapping, o) {
     if (!m('customer_email') && !m('provider_customer_id')) errs.push('Map at least an email or provider customer ID column; rows without one go to review.');
   }
   return errs;
+}
+
+function fixedDate(o) {
+  const v = parseDate(o.txn_date_fixed, o.date_format);
+  if (!v) throw new Error('The fixed date you entered is not valid in the chosen date format');
+  return v;
 }
 
 function normalizeRow(kind, raw, mapping, o) {
@@ -207,7 +214,7 @@ function normalizeRow(kind, raw, mapping, o) {
       else if (type === 'reversal' && amount > 0) throw new Error('Reversal has a positive amount — check the sign convention');
     }
     return {
-      type, amount_cents: amount, currency: o.currency.toUpperCase(), txn_date: dateVal('txn_date', true), policy_number: norm(g('policy_number')),
+      type, amount_cents: amount, currency: o.currency.toUpperCase(), txn_date: mapping.txn_date ? dateVal('txn_date', true) : fixedDate(o), policy_number: norm(g('policy_number')),
       carrier: mapping.carrier ? norm(g('carrier')) : norm(o.carrier), statement_ref: mapping.statement_ref ? norm(g('statement_ref')) : norm(o.statement_ref), raw,
     };
   }
@@ -358,19 +365,21 @@ function applyAdRow(db, importId, v, o) {
 // ---------------------------------------------------------------------------------------------------
 // Orchestration
 // ---------------------------------------------------------------------------------------------------
-async function stage(db, kind, filename, buf) {
+async function stage(db, kind, filename, buf, { headerRow } = {}) {
   if (!FIELDS[kind]) throw Object.assign(new Error('Unknown import type'), { status: 400 });
-  const { headers, rows } = await parseUpload(buf, filename);
+  const parsed = await parseUpload(buf, filename, { headerRow, kind });
+  const { headers, rows } = parsed;
   const hash = crypto.createHash('sha256').update(buf).digest('hex');
   const dup = db.prepare("SELECT id, committed_at FROM imports WHERE file_sha256 = ? AND kind = ? AND status='committed' ORDER BY id DESC").get(hash, kind);
+  const notes = { headerRow: parsed.headerRowNumber, preamble: parsed.preamble, skipped: parsed.skipped };
   const id = tx(db, () => {
-    const r = db.prepare("INSERT INTO imports(kind,filename,file_sha256,status,headers_json,rows_total,created_at) VALUES (?,?,?,?,?,?,?)").run(kind, filename.slice(0, 200), hash, 'staged', JSON.stringify(headers), rows.length, now());
+    const r = db.prepare("INSERT INTO imports(kind,filename,file_sha256,status,headers_json,rows_total,notes_json,created_at) VALUES (?,?,?,?,?,?,?,?)").run(kind, filename.slice(0, 200), hash, 'staged', JSON.stringify(headers), rows.length, JSON.stringify(notes), now());
     const importId = Number(r.lastInsertRowid);
     const ins = db.prepare('INSERT INTO import_rows(import_id,row_number,data_json) VALUES (?,?,?)');
-    rows.forEach((row, i) => ins.run(importId, i + 2, JSON.stringify(row))); // row 2 = first data row in the spreadsheet
+    rows.forEach((row) => ins.run(importId, row.n, JSON.stringify(row.data))); // row_number = the row shown in the user's spreadsheet
     return importId;
   });
-  return { importId: id, headers, sample: rows.slice(0, 5), rowCount: rows.length, fields: FIELDS[kind], required: REQUIRED[kind], suggested: suggestMapping(kind, headers), alreadyImportedAs: dup ? { importId: dup.id, at: dup.committed_at } : null };
+  return { importId: id, headers, sample: rows.slice(0, 5).map((r) => r.data), rowCount: rows.length, fields: FIELDS[kind], required: REQUIRED[kind], suggested: suggestMapping(kind, headers), alreadyImportedAs: dup ? { importId: dup.id, at: dup.committed_at } : null, headerRow: parsed.headerRowNumber, preamble: parsed.preamble, skipped: parsed.skipped };
 }
 
 function processAll(db, imp, mapping, options) {
@@ -401,7 +410,8 @@ function processAll(db, imp, mapping, options) {
     if (res.message && res.action !== 'error') notes[res.message] = (notes[res.message] || 0) + 1;
     if (samples.length < 15) samples.push({ row: r.row_number, action: res.action, message: res.message || null });
   }
-  return { counts, errors, samples, notes, distinct: dist, commissionTotalsCents: imp.kind === 'commissions' ? totals : undefined, total: rows.length };
+  const stagedNotes = imp.notes_json ? JSON.parse(imp.notes_json) : { skipped: [] };
+  return { counts, errors, samples, notes, distinct: dist, commissionTotalsCents: imp.kind === 'commissions' ? totals : undefined, total: rows.length, skippedRows: stagedNotes.skipped || [] };
 }
 
 class RollbackPreview extends Error {}

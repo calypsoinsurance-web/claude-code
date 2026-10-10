@@ -255,3 +255,43 @@ test('paid metrics use only paid-attributed outcomes: organic and unknown never 
   assert.equal(wrong.costs.costPerQuotedCustomer.value, null); // no Google spend and no Google-attributed customers -> N/A, not 0
   await t.close();
 });
+
+test('statement with a title block, header on row 11, total and note rows: header auto-detected, totals skipped and reconciled, fixed date used', async () => {
+  // SYNTHETIC layout fixture mimicking the shape of a real statement; all values are made up.
+  const wb = new ExcelJS.Workbook(); const ws = wb.addWorksheet('Commissions Report');
+  ws.addRow([]); ws.addRow([]);
+  ws.addRow(['Phone: 000-000-0000', null, null, null, 'Commission Payable Statement: Sample Agency']);
+  ws.addRow(['Fax: 000-000-0001', null, null, null, 'agent@example.invalid']);
+  ws.addRow(['Email: support@example.invalid', null, null, null, 'Statement Month: July 2026']);
+  ws.addRow([null, null, null, null, 'Date Sent: 09/15/2026']);
+  ws.addRow([null, null, null, null, 'SAMPLE-CODE']);
+  ws.addRow([]); ws.addRow([]); ws.addRow(['Commission Breakup']);
+  ws.addRow(['Carrier', 'Organization', 'Agent', 'Insured Name', 'Policy#', 'Eff. Date', 'LOB', 'TransType', 'Premium', 'Rate %', 'Commission']);
+  ws.addRow(['SampleCarrier', 'Sample Agency', 'agent@example.invalid', 'Sample Insured LLC', 'SAMPLE-POL-1', '10/17/2025', 'GL', 'New', 22.5, 12, 2.7]);
+  ws.addRow(['SampleCarrier', 'Sample Agency', 'agent@example.invalid', 'Sample Insured 2', 'SAMPLE-POL-2', '11/01/2025', 'GL', 'New', 10, 10, 1.0]);
+  ws.addRow(['', '', '', '', '', '', '', '', '', 'Total', 3.7]);
+  ws.addRow([]); ws.addRow([]); ws.addRow(['Total Commission Payable: $3.70']);
+  const buf = Buffer.from(await wb.xlsx.writeBuffer());
+  const t = await setup();
+  const up = await t.call('POST', '/api/imports/upload?kind=commissions', undefined, { raw: buf, headers: { 'X-Filename': 'stmt.xlsx', 'Content-Type': 'application/octet-stream' } });
+  assert.equal(up.status, 200, JSON.stringify(up.body));
+  assert.equal(up.body.headerRow, 11); assert.equal(up.body.rowCount, 2);
+  assert.ok(up.body.preamble.some((p) => /Statement Month: July 2026/.test(p.text)));
+  assert.equal(up.body.skipped.length, 2); assert.deepEqual(up.body.skipped.flatMap((s) => s.numbers).sort(), [370, 370]);
+  const map = { amount: 'Commission', policy_number: 'Policy#', carrier: 'Carrier', txn_type: 'TransType' };
+  const opt = { date_format: 'mdy', currency: 'USD', statement_ref: 'July 2026 statement', sign_convention: 'type_column', amount_sign: 'as_is', receipt_values: ['New'], reversal_values: ['Chargeback'] };
+  const noDate = await t.call('POST', `/api/imports/${up.body.importId}/preview`, { mapping: map, options: opt });
+  assert.equal(noDate.body.ok, false); assert.ok(noDate.body.problems.some((p) => /needs a date/.test(p)));
+  const pv = await t.call('POST', `/api/imports/${up.body.importId}/preview`, { mapping: map, options: { ...opt, txn_date_fixed: '09/15/2026' } });
+  assert.equal(pv.body.counts.created, 2); assert.equal(pv.body.commissionTotalsCents.receipt, 370);
+  assert.deepEqual(pv.body.skippedRows.flatMap((s) => s.numbers), [370, 370]); // stated totals equal the imported sum
+  const c = await t.call('POST', `/api/imports/${up.body.importId}/commit`, { mapping: map, options: { ...opt, txn_date_fixed: '09/15/2026' } });
+  assert.equal(c.body.counts.created, 2); assert.equal(count(t, 'commission_transactions'), 2);
+  assert.equal(t.db.prepare('SELECT txn_date FROM commission_transactions LIMIT 1').get().txn_date, '2026-09-15');
+  // an unlisted type (e.g. a renewal) is an error row, not silently counted
+  const wb2 = new ExcelJS.Workbook(); const w2 = wb2.addWorksheet('S'); w2.addRow(['Policy#', 'TransType', 'Commission']); w2.addRow(['X1', 'Renewal', 5]);
+  const up2 = await t.call('POST', '/api/imports/upload?kind=commissions', undefined, { raw: Buffer.from(await wb2.xlsx.writeBuffer()), headers: { 'X-Filename': 's2.xlsx', 'Content-Type': 'application/octet-stream' } });
+  const r2 = await t.call('POST', `/api/imports/${up2.body.importId}/preview`, { mapping: { policy_number: 'Policy#', amount: 'Commission', txn_type: 'TransType' }, options: { ...opt, txn_date_fixed: '09/15/2026' } });
+  assert.equal(r2.body.counts.error, 1);
+  await t.close();
+});
