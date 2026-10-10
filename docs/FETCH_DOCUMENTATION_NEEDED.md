@@ -37,3 +37,12 @@ You supplied the embed snippet (partner `FC16191`) and the Container Setup PDF. 
 | W5 | How does payment/purchase happen after step 2 (inside the widget, redirect)? How is issuance reported? | A completed widget is never treated as a sale. |
 | W6 | Who owns required disclosures/consent shown to customers around the widget, and may I store widget data (permitted storage)? | Compliance; capture of raw events is off by default. |
 | W7 | Is the widget script version-pinned (`1.0.0` in the URL) and are there CSP/domain requirements (script, frame, connect hosts)? | I allowed `https://salesfunnelquotesdk.fetchpet.com` for script/frame and `https://*.fetchpet.com` for connect as a guess; real needs unverified. |
+
+## Owner's answers to W1–W5 (2026-10-10) — REPORTED BY YOU, NOT YET CONFIRMED IN WRITING BY FETCH
+| # | Your answer | How the app treats it |
+|---|---|---|
+| W1 | The `complete` event carries the premium, customer and pet details, and means a quote was generated. | **Exact field names are unknown**, so nothing is parsed yet. Next step: record one real `complete` event and build a tested mapping from it. |
+| W2 | Embedding on your own domain is allowed. | Page is built for it; confirm in writing if Fetch requires a registered domain. |
+| W3 | You can add your own `metaData` keys. | Not applied yet. Proposal: add one new key carrying our anonymous visitor ID (see decision pending). Existing identifiers stay unchanged. |
+| W4 | Reports do NOT include the widget's UTM values or a quote ID linking policies to quotes. | Policy→quote links cannot be verified from reports, so policy attribution stays **Unknown** unless another verified identifier is found. |
+| W5 | After step 2 the purchase happens on a tracked fetchpet.com link; you see it in your Fetch dashboard. | A widget completion is never counted as a sale. We need to learn what identifiers the dashboard/exports show per sale. |

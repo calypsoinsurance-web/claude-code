@@ -58,6 +58,8 @@ No platform integration is claimed to work. Click-ID parameter names used for cl
 - Reminders (with a fake mail transport): only to `ADMIN_EMAIL`; no duplicates, including concurrent runs; completed tasks skipped; failures leave the task visible with the error and can be retried once; stays off until confirmed/enabled.
 - Manual browser run (Chromium via Playwright) on the demo database: sign-in, all six pages on desktop and 390 px mobile with no console errors and no horizontal overflow after fixes; an end-to-end commission import (preview → commit) through the UI; the public page (off by default → on → lead saved with no price shown; anonymous API call returned 401). Dashboard screenshot reviewed.
 
+**Also tested:** downloaded backup is a valid SQLite file containing the data and needs sign-in plus the CSRF header; apply-decisions fills only empty settings and is idempotent. Render blueprint/guide written from search-snippet docs and **not executed**.
+
 **Widget tests (added):** config keeps partner identifiers verbatim; widget page off by default and enabled only via the private settings; raw widget events ignored unless capture is on, validated, size-bounded and never create quotes; quote-page security policy allows only Fetch's host while CRM pages stay strict. Manual Chromium run with a **stand-in** for Fetch's script: container mounts, `init`/`invoke` called with the supplied config, container heights 520 px desktop / 680 px mobile per the PDF, events recorded. **The real widget has not been run.**
 
 ## 6. Documented but untested

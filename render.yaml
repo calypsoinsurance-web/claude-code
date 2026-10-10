@@ -1,0 +1,48 @@
+# Render Blueprint for the Calypso CRM. NOT deployed; nothing is purchased until you create it in Render.
+# Structure follows Render's Blueprint YAML reference (web service + persistent disk + secrets set in the dashboard).
+# Verify field names against https://render.com/docs/yaml-spec before first use.
+services:
+  - type: web
+    name: calypso-crm
+    runtime: node
+    plan: starter            # ~$7/month per search snippet; confirm on render.com/pricing
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/me
+    disk:
+      name: crm-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION    # app needs Node 22.13+ (built-in SQLite). Confirm Render honors this on first deploy log.
+        value: 22.13.0
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY
+        value: "1"
+      - key: DB_PATH
+        value: /var/data/crm.sqlite
+      - key: APPLY_DECISIONS_ON_START
+        value: "true"
+      - key: TRACKING_ENABLED
+        value: "false"
+      - key: FETCH_LIVE_ENABLED
+        value: "false"
+      - key: ADMIN_EMAIL
+        sync: false          # you type this in the Render dashboard
+      - key: ADMIN_PASSWORD_HASH
+        sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: PUBLIC_ALLOWED_ORIGINS
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false

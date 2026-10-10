@@ -8,6 +8,10 @@ const reminders = require('../reminders');
 const { integrationStatuses } = require('../integrations/registry');
 const { toCsv } = require('../csv');
 const crm = require('../crm');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { backup } = require('node:sqlite');
 
 const bad = (msg, status = 400) => Object.assign(new Error(msg), { status });
 const isDate = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s));
@@ -244,6 +248,23 @@ function privateRouter(db, transport, cfg) {
     const total = db.prepare(`SELECT COUNT(*) n FROM ad_records WHERE ${where.join(' AND ')}`).get(...params).n;
     const rows = db.prepare(`SELECT * FROM ad_records WHERE ${where.join(' AND ')} ORDER BY report_date DESC, id DESC LIMIT 50 OFFSET ?`).all(...params, (page - 1) * 50);
     res.json({ total, page, rows });
+  });
+
+  // ---------- full database backup (download) ----------
+  // POST (not GET) so it needs the CSRF header. Uses SQLite's online backup, safe while the app is running.
+  r.post('/backup/download', async (req, res) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'crm-backup-'));
+    const file = path.join(dir, 'crm-backup.sqlite');
+    try {
+      await backup(db, file);
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      res.setHeader('Content-Type', 'application/vnd.sqlite3');
+      res.setHeader('Content-Disposition', `attachment; filename="crm-backup-${stamp}.sqlite"`);
+      res.setHeader('Cache-Control', 'no-store');
+      res.send(fs.readFileSync(file));
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   // ---------- CSV exports ----------

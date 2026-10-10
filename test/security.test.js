@@ -64,3 +64,22 @@ test('security headers are present', async () => {
   assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
   await t.close();
 });
+
+test('database backup download requires sign-in and the CSRF header, and yields a valid database', async () => {
+  const fs = require('node:fs'); const os = require('node:os'); const path = require('node:path');
+  const { DatabaseSync } = require('node:sqlite');
+  const t = await start();
+  assert.equal((await t.call('POST', '/api/backup/download', undefined, { noCookie: true })).status, 401);
+  await t.login();
+  await t.call('POST', '/api/customers', { name: 'Backup Check', email: 'bk@example.test' });
+  const bad = await t.call('POST', '/api/backup/download', undefined, { headers: { 'X-Requested-With': '' } });
+  assert.equal(bad.status, 403);
+  const res = await fetch(`${t.base}/api/backup/download`, { method: 'POST', headers: { 'X-Requested-With': 'crm', Cookie: (await (async () => { const l = await fetch(`${t.base}/api/login`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'crm' }, body: JSON.stringify({ email: 'owner@example.test', password: 'correct horse battery staple' }) }); return l.headers.get('set-cookie').split(';')[0]; })()) } });
+  assert.equal(res.status, 200);
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bk-')), 'b.sqlite');
+  fs.writeFileSync(file, Buffer.from(await res.arrayBuffer()));
+  const copy = new DatabaseSync(file, { readOnly: true });
+  assert.equal(copy.prepare("SELECT name FROM customers WHERE email='bk@example.test'").get().name, 'Backup Check');
+  copy.close(); fs.rmSync(path.dirname(file), { recursive: true, force: true });
+  await t.close();
+});

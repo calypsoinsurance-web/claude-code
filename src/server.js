@@ -4,8 +4,11 @@ const { openDb, getSetting } = require('./db');
 const { createApp } = require('./app');
 const { createFetchAdapter } = require('./integrations/fetch');
 const reminders = require('./reminders');
+const { applyDecisions } = require('./decisions');
 
 const db = openDb(cfg.dbPath);
+// Optional: on first start, fill still-empty settings from config/decisions.json (never overwrites later changes).
+if (process.env.APPLY_DECISIONS_ON_START === 'true') { const n = applyDecisions(db).length; if (n) console.log(`Applied ${n} approved decision(s) from config/decisions.json`); }
 const adapter = createFetchAdapter(cfg);
 const transport = reminders.makeTransport(cfg);
 const app = createApp({ db, adapter, transport, cfg });

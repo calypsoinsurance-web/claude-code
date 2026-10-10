@@ -32,7 +32,7 @@ npm run demo          # runs the app on it; every page shows a purple DEMO DATA 
 Your real database is `data/crm.sqlite` and is never touched by the demo.
 
 ### Run the tests
-`npm test` (54 automated tests: calculations, imports, attribution, security, quote retries, reminders).
+`npm test` (56 automated tests: calculations, imports, attribution, security, quote retries, reminders).
 
 ## Getting your data in
 1. **Imports → New import**, pick the type, choose your file, match columns, set the "what the file means" options, **Preview** (nothing saved), then **Commit**.
@@ -53,6 +53,7 @@ Requirements: a host that runs Node 22+ with a **persistent disk** for `DB_PATH`
 Typical settings: build `npm install`, start `npm start`, `NODE_ENV=production`, `TRUST_PROXY=1`, `DB_PATH=/var/data/crm.sqlite` (disk mount), `PUBLIC_BASE_URL=https://your-address`. Run a single instance only (SQLite). The restore steps below were not rehearsed in this build, so after deploying: sign in, run a backup, and prove a restore works before relying on it.
 
 ## Backups, restore and export
+- **Easiest:** Settings → **Download full database backup** (works on a hosted copy too).
 - **Backup:** `npm run backup` writes a consistent copy to `data/backups/` (safe while running). Copy it **off the machine** (it holds customer data). Do this on a schedule you choose; suggested: weekly plus before every big import.
 - **Restore:** stop the app, replace `data/crm.sqlite` (and delete any `crm.sqlite-wal` / `-shm` files next to it) with the backup file, start the app.
 - **Export:** Settings → Export (CSV per table) and Dashboard → "Export this summary". CSV is a convenience copy, not a restorable backup.

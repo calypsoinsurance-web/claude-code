@@ -110,3 +110,15 @@ test('approved decisions file applies cleanly and passes the same validation as 
   assert.equal(s.attribution_lookback_days, '30'); assert.equal(s.reminder_enabled, undefined);
   await t.close();
 });
+
+test('apply-decisions fills only empty settings and never overwrites later changes', () => {
+  const { openDb, setSetting, getSetting } = require('../src/db');
+  const { applyDecisions } = require('../src/decisions');
+  const db = openDb(':memory:');
+  setSetting(db, 'attribution_lookback_days', '14'); // owner changed it later
+  const applied = applyDecisions(db);
+  assert.ok(!applied.includes('attribution_lookback_days')); assert.equal(getSetting(db, 'attribution_lookback_days'), '14');
+  assert.equal(getSetting(db, 'reporting_currency'), 'USD'); assert.equal(getSetting(db, 'reminder_enabled'), null);
+  assert.deepEqual(applyDecisions(db), []); // idempotent
+  applyDecisions(db, { overwrite: true }); assert.equal(getSetting(db, 'attribution_lookback_days'), '30');
+});
