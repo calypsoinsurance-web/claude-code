@@ -33,17 +33,17 @@ const hashStr = s => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7
 
 // ───────────────────────── state
 const KEY = 'steady.v1', DEVKEY = 'steady.dev', TIMERKEY = 'steady.timer';
-const COLS = ['areas', 'tasks', 'inbox', 'bills', 'wins', 'events', 'boosts'];
+const COLS = ['areas', 'tasks', 'inbox', 'bills', 'wins', 'events', 'boosts', 'checks'];
 const blank = () => ({
   v: 2,
   settings: {
     u: 0, name: '', cur: '$', quiet: { on: true, from: '21:30', to: '07:00' }, sound: true, cash: 0, taxPct: 20, taxPot: 0, onboarded: false,
     day: { start: '07:00', work: '09:00', workEnd: '17:00', end: '21:30' }, cycle: { on: false, starts: [], len: 28 },
   },
-  areas: {}, tasks: {}, inbox: {}, bills: {}, wins: {}, events: {}, boosts: {},
+  areas: {}, tasks: {}, inbox: {}, bills: {}, wins: {}, events: {}, boosts: {}, checks: {},
 });
 let S = blank();
-let dev = { theme: 'auto', clientId: '', lastArea: '', driveOk: false, fileId: '', lastSync: 0, mode: 'one', scan: null, basics: '', rough: '', lastOpen: 0, cheers: [] };
+let dev = { theme: 'auto', clientId: '', lastArea: '', driveOk: false, fileId: '', lastSync: 0, mode: 'one', scan: null, lastScan: null, basics: '', rough: '', lastOpen: 0, cheers: [], closed: '', first: null, decomp: 0, decompDone: 0, focus: null };
 const store = {
   get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage full or blocked */ } },
@@ -81,13 +81,24 @@ const CHEERS = [
 ];
 const TINY = ['Open the file / app / page', 'Gather what I need', 'Write the first line', 'Set a 5-minute timer', 'Put on music that helps'];
 const BOOSTS = [['Play one favourite song', 4], ['Step outside for 2 minutes', 2], ['Make a nice drink', 5], ['Stretch or shake it out', 2], ['Five slow breaths at the window', 1], ['A snack you love', 5]];
+// Three taps, never a gate. "feel" is optional and always overrides everything else.
 const SCANQ = [
-  ['ate', 'Eaten in the last 4 hours?', [['y', 'Yes'], ['n', 'No']]],
-  ['water', 'Had water recently?', [['y', 'Yes'], ['n', 'No']]],
-  ['slept', 'Slept OK?', [['y', 'Yes'], ['n', 'Not really']]],
-  ['pain', 'In pain or unwell?', [['n', 'No'], ['y', 'Yes']]],
-  ['over', 'Overstimulated or frazzled?', [['n', 'No'], ['y', 'Yes']]],
-  ['social', 'People battery?', [['ok', 'OK'], ['low', 'Low']]],
+  ['fuel', 'Fed and watered?', [['ok', 'Yes'], ['food', 'Need food'], ['water', 'Need water']]],
+  ['rest', 'Rested and comfortable?', [['ok', 'Yes'], ['tired', 'Tired'], ['sore', 'Sore / unwell']]],
+  ['load', 'Head and people battery?', [['ok', 'OK'], ['fraz', 'Frazzled'], ['people', 'People-drained']]],
+];
+const FEEL = [['h', 'Strong'], ['m', 'Steady'], ['l', 'Gentle']];
+const PHASES = { period: 'Period', rising: 'Rising-energy phase', mid: 'Mid-cycle', second: 'Second half', pre: 'Premenstrual week' };
+const BUDGET = { h: 240, m: 160, l: 90 };
+const STICKY = [['unclear', 'Unclear what to do'], ['boring', 'Boring'], ['scary', 'Scary or awkward'], ['big', 'Too big'], ['waiting', 'Waiting on someone'], ['drop', "Don't actually need it"]];
+const SCRIPTS = [
+  ['Chasing a payment', "Hi [name], hope you're well. Just a quick note that invoice [number] for [amount] was due on [date]. Could you let me know when it's scheduled? Thanks so much."],
+  ['Following up a lead', 'Hi [name], following up on our chat about [topic]. Happy to answer any questions. Would a quick call this week or next suit you?'],
+  ['Replying late', 'Hi [name], sorry for the slow reply, and thanks for your patience. [Your answer].'],
+  ['Saying no kindly', "Thanks so much for thinking of me. I don't have capacity for this right now, so I'll pass this time, but I hope it goes brilliantly."],
+  ['Asking for more time', 'Hi [name], I want to give [task] the attention it deserves. Could we move the deadline to [date]? Thank you for understanding.'],
+  ['Holding a boundary', "I'm offline for the evening. I'll get back to you tomorrow morning."],
+  ['Checking in when waiting', 'Hi [name], just checking in on [thing]. No rush, I just want to plan my week. Any update?'],
 ];
 const PEOPLE_RX = /\b(call|phone|ring|email|e-mail|reply|respond|message|text|meeting|meet|client|customer|zoom|dm|chase|follow up|follow-up)\b/;
 
@@ -136,37 +147,75 @@ function addArea(name, kind, color) {
 
 // ───────────────────────── body, cycle, capacity
 const scanToday = () => (dev.scan && dev.scan.d === today() && !dev.scan.skip ? dev.scan : null);
+function cycleLen() {
+  const c = S.settings.cycle, st = [...(c.starts || [])].sort(), gaps = [];
+  for (let i = 1; i < st.length; i++) gaps.push(diff(st[i], st[i - 1]));
+  const rec = gaps.slice(-3).filter(g => g >= 18 && g <= 45);
+  return rec.length ? Math.round(rec.reduce((a, b) => a + b, 0) / rec.length) : (+c.len || 28);
+}
+const phaseOf = (day, len) => (day <= 5 ? 'period' : day <= 13 ? 'rising' : day <= 16 ? 'mid' : day <= len - 7 ? 'second' : 'pre');
+const scanScore = s => (s.feel ? { h: 3, m: 2, l: 1 }[s.feel] : 3 - (s.rest === 'tired' || s.rest === 'sore' ? 1 : 0) - (s.load === 'fraz' ? 1 : 0) - (s.fuel === 'food' ? 0.5 : 0));
+// Personal pattern from her own check-ins: replaces generic phase assumptions once there's enough data.
+function cyclePattern() {
+  const st = S.settings.cycle.starts || [], C = live('checks').filter(x => x.cday);
+  if (st.length < 3 || C.length < 20) return null;
+  const len = cycleLen(), g = {};
+  C.forEach(x => (g[phaseOf(x.cday, len)] = g[phaseOf(x.cday, len)] || []).push(x.n));
+  const all = C.reduce((a, x) => a + x.n, 0) / C.length, avg = {};
+  let dip = null, low = all - 0.5;
+  for (const p of Object.keys(PHASES)) {
+    const v = g[p]; if (!v || v.length < 3) continue;
+    avg[p] = v.reduce((a, b) => a + b, 0) / v.length;
+    if (avg[p] <= low) { low = avg[p]; dip = p; }
+  }
+  return { dip, all, avg, n: C.length, len };
+}
 function cycleInfo(date = today()) {
   const c = S.settings.cycle;
   if (!c || !c.on || !c.starts || !c.starts.length) return null;
-  const st = [...c.starts].sort(), last = st.filter(s => s <= date).pop();
+  const last = [...c.starts].sort().filter(s => s <= date).pop();
   if (!last) return null;
-  let len = +c.len || 28;
-  const gaps = []; for (let i = 1; i < st.length; i++) gaps.push(diff(st[i], st[i - 1]));
-  const rec = gaps.slice(-3).filter(g => g >= 18 && g <= 45);
-  if (rec.length) len = Math.round(rec.reduce((a, b) => a + b, 0) / rec.length);
-  const day = diff(date, last) + 1;
-  if (day > len + 14) return { day, len, label: 'Cycle day unknown', note: 'Log your next period start when it comes.', hard: false };
-  if (day <= 5) return { day, len, label: `Period, day ${day}`, note: day <= 2 ? 'Energy is often lower now. Gentle is the plan.' : 'Go easy on yourself.', hard: day <= 2 };
-  if (day <= 13) return { day, len, label: `Rising-energy phase, day ${day}`, note: 'Many people find planning and starting new things easier now.', hard: false };
-  if (day <= 16) return { day, len, label: `Mid-cycle, day ${day}`, note: '', hard: false };
-  if (day <= len - 7) return { day, len, label: `Second half, day ${day}`, note: '', hard: false };
-  if (day <= len) return { day, len, label: `Premenstrual week, day ${day}`, note: 'ADHD traits often feel stronger this week. Lower expectations are a strategy, not a failure.', hard: true };
-  return { day, len, label: `Day ${day}, period may be due`, note: 'Lighter plans are a good idea.', hard: true };
+  const len = cycleLen(), day = diff(date, last) + 1;
+  if (day > len + 14) return { day, len, phase: null, label: 'Cycle day unknown', short: 'cycle', note: 'Log your next period start when it comes.', hard: false };
+  const phase = day > len ? 'pre' : phaseOf(day, len), pat = cyclePattern();
+  const name = day > len ? 'Period may be due' : PHASES[phase];
+  const hard = pat ? pat.dip === phase : (phase === 'pre' || (phase === 'period' && day <= 2));
+  const note = pat
+    ? (hard ? 'Your own check-ins show this phase tends to be lower for you. Plan lighter if you can.' : '')
+    : (hard ? 'Some people find this phase harder. How you actually feel always wins.' : '');
+  return { day, len, phase, label: `${name}, day ${day}`, short: name.toLowerCase(), note, hard, personal: !!pat };
 }
 function capacity() {
-  const s = scanToday(), c = cycleInfo(), why = [];
+  const s = scanToday(), c = cycleInfo(), rough = dev.rough === today(), why = [];
   let n = 3;
   if (s) {
-    if (s.slept === 'n') { n--; why.push('short on sleep'); }
-    if (s.pain === 'y') { n--; why.push('pain'); }
-    if (s.over === 'y') { n--; why.push('overstimulated'); }
-    if (s.ate === 'n') n -= 0.5;
-  }
-  if (c && c.hard) { n--; why.push(c.label.split(',')[0].toLowerCase()); }
-  if (dev.rough === today()) { n--; why.push('rough hormonal day'); }
-  const known = !!(s || (c && c.hard) || dev.rough === today());
+    if (s.rest === 'tired') why.push('tired');
+    if (s.rest === 'sore') why.push('sore or unwell');
+    if (s.load === 'fraz') why.push('frazzled');
+    n = scanScore(s);
+    if (s.feel) why.splice(0, why.length, 'your call');
+  } else if (c && c.hard) { n--; why.push(c.short); } // the cycle only counts when you haven't told us how you feel
+  if (rough && !(s && s.feel)) { n--; why.push('rough hormonal day'); }
+  const known = !!(s || (c && c.hard) || rough);
   return { n, lvl: n >= 2.5 ? 'h' : n >= 1.5 ? 'm' : 'l', why, known };
+}
+// Pacing: an energy budget for the day, so a good day doesn't turn into a crash.
+const effort = k => Math.round((k.size || 10) * ({ h: 1.5, m: 1, l: 0.6 }[k.energy] || 1) * (k.people ? 1.3 : 1));
+function budget() {
+  const c = capacity(), t = today(), total = c.known ? BUDGET[c.lvl] : 180;
+  const used = live('wins').filter(w => w.day === t).reduce((a, w) => a + (w.effort || 0), 0) + (dev.focus && dev.focus.d === t ? dev.focus.mins : 0);
+  return { total, used: Math.round(used), over: used >= total, pct: Math.min(100, Math.round(used / total * 100)) };
+}
+const isBiz = id => S.areas[id] && !S.areas[id].del && S.areas[id].kind === 'biz';
+function decompTrigger() {
+  const nm = nowMin(), now = Date.now();
+  let at = dev.decomp || 0;
+  for (const e of eventsOn(today())) {
+    if (e.people === false) continue;
+    const end = e.end ? tmin(e.end) : tmin(e.start) + 60;
+    if (nm >= end && nm - end <= 45) { const d = new Date(); d.setHours(Math.floor(end / 60), end % 60, 0, 0); at = Math.max(at, d.getTime()); }
+  }
+  return at && at > (dev.decompDone || 0) && now - at < 90 * 60000 ? at : 0;
 }
 const energyNow = () => { const c = capacity(); return c.known ? c.lvl : null; };
 
@@ -185,25 +234,34 @@ const bodyItem = (id, title, score) => ({ kind: 'body', id, title, area: '', siz
 
 function pool() {
   const t = today(), e = energyNow(), anchor = blockNow(), basics = dev.basics === t, s = scanToday();
-  const socialLow = s && s.social === 'low', nx = nextEvent(), fit = nx && nx.mins <= 240 ? nx.mins - nx.buffer : null;
+  const socialLow = s && s.load === 'people', nx = nextEvent(), fit = nx && nx.mins <= 240 ? nx.mins - nx.buffer : null;
+  const closed = dev.closed === t, over = budget().over, firstId = dev.first && dev.first.d === t ? dev.first.id : null;
   const out = [];
-  if (s && s.ate === 'n') out.push(bodyItem('ate', 'Eat something easy', 130));
-  if (s && s.water === 'n') out.push(bodyItem('water', 'Drink a glass of water', 125));
+  if (s && s.fuel === 'food') out.push(bodyItem('ate', 'Eat something easy', 130));
+  if (s && s.fuel === 'water') out.push(bodyItem('water', 'Drink a glass of water', 125));
+  if (decompTrigger()) out.push({ ...bodyItem('decomp', 'Take 10 quiet minutes to decompress', 128), size: 10, why: ['After people time, recovery is part of the plan'] });
   for (const k of live('tasks')) {
     if (k.done || paused(k.area) || (k.start && k.start > t) || (k.snooze && k.snooze >= t)) continue;
+    if (k.waiting && k.waiting.until > t) continue;
+    if (closed && isBiz(k.area)) continue;
     if (basics && !(k.basic || (k.hard && k.due && diff(k.due, t) <= 1))) continue;
+    if (over && !k.basic && !(k.hard && k.due && k.due <= t) && (k.energy === 'h' || (k.size || 10) > 15)) continue;
     let sc = 0; const why = [];
+    const picked = k.id === firstId;
+    if (picked) { sc += 200; why.push('You picked this last night'); }
+    if (k.waiting) { sc += 20; why.push(`Check if you've heard back${k.waiting.who ? ' from ' + k.waiting.who : ''}`); }
     if (k.pin) { sc += 50; why.push('Your pick for today'); }
-    if (k.due) {
+    if (picked && !k.due) { /* chosen the night before: always in */ }
+    else if (k.due) {
       const d = diff(k.due, t);
       if (k.hard) {
         if (d < 0) { sc += 110; why.push('Deadline passed. Needs attention'); }
         else if (d === 0) { sc += 100; why.push('Deadline today'); }
         else if (d <= 3) { sc += 70 - d * 5; why.push(`Deadline ${nice(k.due).toLowerCase()}`); }
-        else if (d <= 7) sc += 25; else if (!k.pin) continue;
+        else if (d <= 7) sc += 25; else if (!k.pin && !picked) continue;
       } else if (d <= 0) { sc += 30 + Math.min(-d, 5); why.push(d === 0 ? 'Planned for today' : 'Rolled over quietly'); }
-      else if (d === 1) sc += 12; else if (!k.pin) continue;
-    } else if (!k.pin) continue;
+      else if (d === 1) sc += 12; else if (!k.pin && !picked) continue;
+    } else if (!k.pin && !picked && !k.waiting) continue;
     if (k.basic) sc += 15;
     if (e) {
       if (k.energy === e) { sc += 12; why.push('Fits your capacity'); }
@@ -222,7 +280,7 @@ function pool() {
     const d = diff(b.due, t);
     if (b.dir === 'out' && d <= (basics ? 1 : 3)) {
       out.push({ kind: 'bill', id: b.id, title: `Pay ${b.name} (${money(b.amount)})`, area: b.area, size: 5, hard: true, due: b.due, steps: [], score: d < 0 ? 105 : d === 0 ? 95 : 80 - d * 5, why: [d < 0 ? 'Past its due date' : d === 0 ? 'Due today' : `Due ${nice(b.due).toLowerCase()}`] });
-    } else if (!basics && b.dir === 'in' && d < 0 && !(b.chase && b.chase >= t)) {
+    } else if (!basics && !closed && b.dir === 'in' && d < 0 && !(b.chase && b.chase >= t)) {
       out.push({ kind: 'chase', id: b.id, title: `Check on payment: ${b.name} (${money(b.amount)})`, area: b.area, size: 5, steps: [], people: true, score: socialLow ? 5 : 40, why: [`Was expected ${nice(b.due).toLowerCase()}`] });
     }
   }
@@ -236,7 +294,7 @@ function pool() {
 }
 
 // ───────────────────────── actions on items
-function win(title, area, quest) { put('wins', { id: uid(), title, area, quest: !!quest, at: Date.now(), day: today() }); }
+function win(title, area, quest, eff) { put('wins', { id: uid(), title, area, quest: !!quest, effort: eff || 0, at: Date.now(), day: today() }); }
 function cheer(extra) {
   const recent = dev.cheers || [];
   const opts = CHEERS.map((_, i) => i).filter(i => !recent.includes(i));
@@ -248,14 +306,19 @@ function complete(kind, id) {
   let extra = '';
   if (kind === 'task') {
     const k = S.tasks[id]; if (!k) return;
-    win(k.title, k.area, k.quest); dev.lastArea = k.area; saveDev();
+    win(k.title, k.area, k.quest, effort(k)); dev.lastArea = k.area;
+    if (k.people) dev.decomp = Date.now();
+    saveDev();
     if (k.quest && k.reward) extra = `Quest complete. Your reward: ${k.reward}.`;
     if (k.repeat) { k.due = nextDue(k.repeat, k.due); k.steps = (k.steps || []).map(s => ({ ...s, done: false })); k.snooze = null; k.slips = 0; }
     else { k.done = true; k.doneAt = Date.now(); }
-    k.pin = false; put('tasks', k);
+    k.pin = false; k.waiting = null; put('tasks', k);
   } else if (kind === 'bill') markPaid(id);
-  else if (kind === 'chase') { const b = S.bills[id]; win('Followed up on ' + b.name, b.area); b.chase = addD(today(), 3); put('bills', b); }
-  else if (kind === 'body') { if (dev.scan) { dev.scan[id] = 'y'; saveDev(); } win(id === 'ate' ? 'Ate something' : 'Drank water', ''); }
+  else if (kind === 'chase') { const b = S.bills[id]; win('Followed up on ' + b.name, b.area, false, 7); b.chase = addD(today(), 3); put('bills', b); dev.decomp = Date.now(); saveDev(); }
+  else if (kind === 'body') {
+    if (id === 'decomp') { dev.decompDone = Date.now(); saveDev(); win('Took quiet time to recover', ''); }
+    else { if (dev.scan) { dev.scan.fuel = 'ok'; saveDev(); } win(id === 'ate' ? 'Ate something' : 'Drank water', ''); }
+  }
   if (ui.pulled === id) ui.pulled = null;
   if (ui.chosen === id) ui.chosen = null;
   if (kind !== 'bill') cheer(extra);
@@ -265,8 +328,11 @@ function snooze(kind, id) {
   const t = today();
   if (kind === 'task') {
     const k = S.tasks[id]; k.snooze = t; k.slips = (k.slips || 0) + 1; put('tasks', k);
-    if (k.slips >= 3) { toast('This one keeps slipping. Smaller steps might help.'); setTimeout(() => stepsSheet(id), 400); }
-  } else if (kind === 'body') { if (dev.scan) { dev.scan[id] = 'later'; saveDev(); } }
+    if (k.slips >= 3) setTimeout(() => stickySheet(id), 300);
+  } else if (kind === 'body') {
+    if (id === 'decomp') dev.decompDone = Date.now(); else if (dev.scan) dev.scan.fuel = 'later';
+    saveDev();
+  }
   else { const b = S.bills[id]; b.snooze = t; put('bills', b); }
   if (ui.pulled === id) ui.pulled = null;
   if (ui.chosen === id) ui.chosen = null;
@@ -275,7 +341,7 @@ function snooze(kind, id) {
 function markPaid(id) {
   const b = S.bills[id]; if (!b) return;
   const amt = +b.amount || 0;
-  win(b.dir === 'out' ? 'Paid ' + b.name : 'Received ' + b.name, b.area);
+  win(b.dir === 'out' ? 'Paid ' + b.name : 'Received ' + b.name, b.area, false, 5);
   let msg;
   if (b.dir === 'out') { setSettings({ cash: (+S.settings.cash || 0) - amt }); msg = `Paid. Cash updated: ${money(-amt)}`; }
   else {
@@ -316,7 +382,7 @@ const bindIn = (k, v, type = 'text', extra = '') => `<input type="${type}" data-
 const check = (k, on, label) => `<label class="check"><input type="checkbox" data-f="${k}" ${on ? 'checked' : ''}> <span>${label}</span></label>`;
 const dateQuick = k => `<div class="chips" style="margin-top:8px">${[['', 'No date'], [today(), 'Today'], [addD(today(), 1), 'Tomorrow'], [weekEnd(), 'This week'], [addD(today(), 7), 'Next week']].map(([v, l]) =>
   `<button type="button" class="chip" data-act="chip" data-k="${k}" data-v="${v}">${l}</button>`).join('')}</div>`;
-const cycleHint = date => { const c = date && cycleInfo(date); return c && c.hard ? `<p class="hint">That date falls in your ${esc(c.label.split(',')[0].toLowerCase())}. Consider giving it some buffer.</p>` : ''; };
+const cycleHint = date => { const c = date && cycleInfo(date); return c && c.hard ? `<p class="hint">That date falls in your ${esc(c.short)}${c.personal ? ', which tends to be lower for you' : ''}. Consider giving it some buffer.</p>` : ''; };
 
 // ───────────────────────── task sheet
 function taskSheet(id, seed) {
@@ -370,6 +436,79 @@ function stepsSheet(id) {
     <p class="mut small" style="margin-top:8px">Want a starting point? Tap to add:</p>
     <div class="chips" style="margin-top:6px">${TINY.map(t => `<button class="chip" data-act="addTiny" data-v="${esc(t)}">+ ${esc(t)}</button>`).join('')}</div>
     <div class="row"><button class="btn pri" data-act="saveSteps">Save</button><button class="btn ghost" data-act="closeSheet">Cancel</button></div>`);
+}
+
+// "What's making this one sticky?": each reason gets a different kind of help
+function stickySheet(id) {
+  const k = S.tasks[id]; if (!k) return;
+  F = { _id: id, why: '', q: '', reward: k.reward || '', who: '', wait: 3 };
+  sheet(() => {
+    let body = '';
+    if (F.why === 'unclear') body = `${field('What\'s the first question you need to answer?', bindIn('q', F.q, 'text', 'placeholder="e.g. Which template do I use?"'))}
+      <p class="mut small" style="margin-top:6px">Answering just that becomes your first step.</p>${saveRow()}`;
+    else if (F.why === 'boring') body = `${field('Pick a reward for doing it', bindIn('reward', F.reward, 'text', 'placeholder="e.g. Fancy coffee, an episode"'))}
+      <p class="mut small" style="margin-top:6px">It becomes a side quest. Try pairing it with music or a nice drink from your dopamine menu.</p>${saveRow()}`;
+    else if (F.why === 'scary') body = `<p class="mut small" style="margin-top:12px">Ready-made wording. Copy one, change the [brackets], send. Done is better than perfect.</p>${scriptList()}${saveRow('I\'ll use a script')}`;
+    else if (F.why === 'waiting') body = `${field('Who or what are you waiting on?', bindIn('who', F.who, 'text', 'placeholder="e.g. Sarah at Acme"'))}
+      ${field('Remind me to check back in', chips('wait', [[2, '2 days'], [3, '3 days'], [7, 'A week']], F.wait))}
+      <p class="mut small" style="margin-top:6px">It moves to "Waiting for" and stays off Today until then.</p>${saveRow()}`;
+    else if (F.why === 'drop') body = `<div class="card soft" style="margin-top:12px"><p>Letting go is a decision, not a failure.</p></div><div class="row"><button class="btn pri" data-act="stickyDrop">Let it go</button></div>`;
+    return `<h2>What's making this one sticky?</h2><p class="mut small">${esc(k.title)}</p><p class="mut small" style="margin:6px 0 10px">No wrong answers. Each one gets a different kind of help.</p>
+      ${chips('why', STICKY, F.why)}${body}<div class="row"><button class="btn ghost" data-act="closeSheet">Close</button></div>`;
+  });
+}
+const saveRow = (l = 'Save') => `<div class="row"><button class="btn pri" data-act="stickySave">${l}</button></div>`;
+const scriptList = () => `<div class="list" style="margin-top:8px">${SCRIPTS.map(([t, s], i) => `<div class="item" style="display:block"><div class="t">${esc(t)}</div><p class="script">${esc(s)}</p><button class="btn sm" data-act="copyScript" data-i="${i}">Copy</button></div>`).join('')}</div>`;
+function scriptsSheet() {
+  sheet(() => `<h2>Message scripts</h2><p class="mut small">For the messages that feel awkward. Copy, change the [brackets], send.</p>${scriptList()}<div class="row"><button class="btn ghost" data-act="closeSheet">Close</button></div>`);
+}
+
+// 3-tap body check (optional, never blocks the screen)
+function checkinSheet() {
+  const prev = scanToday();
+  ui.scan = prev ? Object.fromEntries(['fuel', 'rest', 'load', 'feel'].filter(k => prev[k] && prev[k] !== 'later').map(k => [k, prev[k]])) : {};
+  sheet(() => {
+    const d = ui.scan;
+    return `<h2>Quick body check</h2><p class="mut small">Three taps. Skip anything you like.</p>
+    ${SCANQ.map(([k, q, opts]) => `<div class="scanrow"><span>${q}</span></div><div class="chips" style="margin-bottom:6px">${opts.map(([v, l]) => `<button class="chip sm${d[k] === v ? ' on' : ''}" data-act="scan" data-k="${k}" data-v="${v}">${l}</button>`).join('')}</div>`).join('')}
+    <div class="scanrow"><span>Optional: overall today feels… <span class="mut small">(this always wins)</span></span></div>
+    <div class="chips">${FEEL.map(([v, l]) => `<button class="chip sm${d.feel === v ? ' on' : ''}" data-act="scan" data-k="feel" data-v="${v}">${l}</button>`).join('')}</div>
+    <div class="row"><button class="btn pri" data-act="scanDone">Done</button>${dev.lastScan && !prev ? '<button class="btn" data-act="scanSame">Same as last time</button>' : ''}<button class="btn ghost" data-act="scanSkip">Not now</button></div>`;
+  });
+}
+function saveScan(s) {
+  dev.scan = { d: today(), at: Date.now(), ...s }; dev.lastScan = { ...s }; saveDev();
+  const c = cycleInfo();
+  put('checks', { id: today(), d: today(), n: scanScore(dev.scan), cday: c && c.phase ? c.day : null });
+}
+
+// Evening close: wins → tomorrow's first step → work closed
+function shutdownSheet() {
+  const tm1 = addD(today(), 1);
+  F = { sd: 0, first: '', firstText: '' };
+  sheet(() => {
+    const t = today(), W = live('wins').filter(w => w.day === t), b = budget();
+    const cands = live('tasks').filter(k => !k.done && k.anchor !== 'pm' && !paused(k.area) && !(k.waiting && k.waiting.until > tm1) && ((k.due && k.due <= tm1) || k.pin))
+      .sort((a, b2) => (b2.hard ? 1 : 0) - (a.hard ? 1 : 0) || (a.due || '').localeCompare(b2.due || '')).slice(0, 6);
+    const body = [
+      `<h2>1 of 3 · Here's what you did today</h2>${W.length ? `<div class="list" style="margin-top:10px">${W.slice(0, 10).map(w => `<div class="item"><span class="dotc" style="--c:${areaColor(w.area)}"></span><div class="grow t">${w.quest ? '✦ ' : ''}${esc(w.title)}</div></div>`).join('')}</div>` : '<p style="margin-top:10px">Rest counts. Showing up counts. Today counts.</p>'}
+        <p class="mut small" style="margin-top:10px">Energy used: about ${b.pct}% of today's budget.</p>`,
+      `<h2>2 of 3 · Choose tomorrow's first small step</h2><p class="mut small">Decide now, so tomorrow-you doesn't have to. Small and concrete works best.</p>
+        <div style="margin-top:10px">${cands.length ? chips('first', cands.map(k => [k.id, k.title]), F.first) : '<p class="small">Nothing scheduled. Type one below if you like.</p>'}</div>
+        ${field('Or something else', bindIn('firstText', F.firstText, 'text', 'placeholder="e.g. Open the Acme proposal and read the first page"'))}`,
+      `<h2>3 of 3 · Work is closed for today</h2><p style="margin-top:10px">Your businesses go quiet until tomorrow. Rest is part of the work, not a reward for finishing it.</p>
+        <div class="row"><button class="btn pri" data-act="sdClose">Close work for today</button><button class="btn" data-act="sdKeep">Keep it open</button></div>`,
+    ][F.sd];
+    return `${body}<div class="row">${F.sd > 0 ? '<button class="btn ghost" data-act="sdBack">Back</button>' : ''}${F.sd < 2 ? '<button class="btn pri" data-act="sdNext">Next</button>' : ''}</div>`;
+  });
+}
+function saveFirstPick() {
+  const tm1 = addD(today(), 1);
+  if (String(F.firstText || '').trim()) {
+    const o = put('tasks', { id: uid(), created: Date.now(), done: false, title: F.firstText.trim(), area: '', size: 10, energy: 'm', anchor: 'any', due: tm1, hard: false, steps: [], first: '', notes: '', pin: false, repeat: null });
+    dev.first = { d: tm1, id: o.id };
+  } else if (F.first) dev.first = { d: tm1, id: F.first };
+  saveDev();
 }
 
 // ───────────────────────── capture + inbox
@@ -428,80 +567,70 @@ function metaTags(it) {
   return `${it.area ? `<span class="tag">${areaDot(it.area)}${esc(areaName(it.area))}</span>` : ''}<span class="tag">⏱ ${it.size} min</span>${it.people ? '<span class="tag">👥 people</span>' : ''}${it.hard ? `<span class="tag hardt">⚑ ${esc(it.due ? nice(it.due) : 'deadline')}</span>` : ''}${it.quest ? '<span class="tag">✦ quest</span>' : ''}`;
 }
 
-// Today: the fixed frame. Sections always appear in this order.
+// Today: the fixed frame. Sections always appear in this order, and the next action sits near the top.
 function vToday() {
   const t = today(), P = pool(), wins = live('wins').filter(w => w.day === t).length, hr = new Date().getHours();
   const greet = hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening';
-  let h = `<header class="top"><h1>${greet}${S.settings.name ? ', ' + esc(S.settings.name) : ''}</h1>
-    <p class="mut">${new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })} · ${wins ? `${wins} win${wins > 1 ? 's' : ''} today` : 'a fresh start'}</p></header>`;
-  h += sectCheckin();
-  h += sectWelcome();
-  h += sectTimeline();
-  h += sectHeadsUp();
+  let h = `<header class="top compact"><h1>${greet}${S.settings.name ? ', ' + esc(S.settings.name) : ''}</h1>
+    <p class="mut small">${new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })} · ${wins ? `${wins} win${wins > 1 ? 's' : ''} today` : 'a fresh start'}</p></header>`;
+  h += statusRow();
+  h += banner();
   h += sectNext(P);
+  h += sectTimeline();
   const nIn = live('inbox').length;
   if (nIn && dev.basics !== t) h += `<button class="banner" data-act="tab" data-v="inbox"><b>${nIn} thing${nIn > 1 ? 's' : ''} in your inbox.</b> About ${Math.max(1, Math.round(nIn * 0.4))} min to sort, whenever suits.</button>`;
-  if (dev.basics !== t) h += sectQuest();
+  if (dev.basics !== t && dev.closed !== t) h += sectQuest();
   const up = upcoming(P.slice(0, 4).map(x => x.id));
   if (up.length) h += `<h3>Not forgotten: coming up</h3><div class="list">${up.map(u => `<div class="item"><span class="dotc" style="--c:${areaColor(u.area)}"></span><div class="grow"><div class="t">${esc(u.title)}</div><div class="m">${nice(u.due)}</div></div></div>`).join('')}</div>`;
   h += sectBoosts();
   return h;
 }
-function sectCheckin() {
-  const t = today(), c = cycleInfo(), cap = capacity(), s = dev.scan && dev.scan.d === t ? dev.scan : null;
-  const cyc = c ? `<p class="cyc">◐ ${esc(c.label)}${c.note ? `. ${esc(c.note)}` : ''}</p>` : '';
-  if (!s) {
-    const d = ui.scan;
-    return `<section class="card soft"><p class="q">Quick body check <span class="mut small">(about 5 seconds)</span></p>
-      ${SCANQ.map(([k, q, opts]) => `<div class="scanrow"><span>${q}</span><div class="chips">${opts.map(([v, l]) => `<button class="chip sm${d[k] === v ? ' on' : ''}" data-act="scan" data-k="${k}" data-v="${v}">${l}</button>`).join('')}</div></div>`).join('')}
-      <div class="row"><button class="btn pri" data-act="scanDone">Done</button><button class="btn ghost" data-act="scanSkip">Skip today</button></div>${cyc}</section>`;
-  }
-  const stale = s.at && Date.now() - s.at > 4 * 3600e3;
-  return `<div class="capline"><span class="cap cap-${cap.lvl}">${cap.known ? `Capacity: ${CAP[cap.lvl]}` : 'Capacity: not checked'}</span>
-    ${cap.why.length ? `<span class="mut small">${esc(cap.why.join(', '))}</span>` : ''}
-    <button class="btn sm ghost" data-act="rescan">${stale ? 'Been a while. Check in again?' : 'Check in again'}</button>
-    ${dev.basics === t ? '<button class="btn sm" data-act="basicsOff">Back to a normal day</button>' : '<button class="btn sm ghost" data-act="basicsOn">Basics only today</button>'}</div>${cyc}`;
+// One compact row of tappable status chips: body check, capacity, cycle, energy used
+function statusRow() {
+  const t = today(), s = dev.scan && dev.scan.d === t ? dev.scan : null, cap = capacity(), c = cycleInfo(), b = budget();
+  const chipsH = [];
+  chipsH.push(s && !s.skip
+    ? `<button class="schip cap-${cap.lvl}" data-act="checkin" title="${esc(cap.why.join(', '))}">${CAP[cap.lvl]}${cap.why.length && cap.why[0] !== 'your call' ? ' · ' + esc(cap.why[0]) : ''}</button>`
+    : `<button class="schip invite" data-act="checkin">Body check · 3 taps</button>`);
+  if (c) chipsH.push(`<button class="schip" data-act="more" data-v="body">◐ ${esc(c.short)}${c.phase ? ' · day ' + c.day : ''}</button>`);
+  chipsH.push(`<span class="schip meter" title="Energy used today"><i style="width:${b.pct}%"></i><span>Energy used ${b.pct}%</span></span>`);
+  return `<div class="status">${chipsH.join('')}</div>`;
 }
-function sectWelcome() {
-  const t = today(), cap = capacity();
-  if (dev.basics === t) return `<section class="card soft"><p class="q">Basics-only day</p><p class="mut small">Only your body, essentials and anything that would cause real damage if missed. Everything else is safely waiting. This counts as a full day.</p></section>`;
-  if (ui.welcomeDismissed) return '';
-  if (ui.gap >= 2) return `<section class="card soft"><p class="q">Welcome back.</p><p class="mut small">No catch-up needed. Everything rolled forward quietly while you were away. Want to ease in with a basics-only day?</p>
-    <div class="row"><button class="btn pri" data-act="basicsOn">Basics only</button><button class="btn" data-act="welcomeOk">Normal day</button></div></section>`;
-  if (cap.known && cap.n <= 0.5) return `<section class="card soft"><p class="q">Sounds like a low-capacity day.</p><p class="mut small">Switching to basics only is a smart move, not giving up.</p>
-    <div class="row"><button class="btn pri" data-act="basicsOn">Basics only</button><button class="btn ghost" data-act="welcomeOk">I'm OK</button></div></section>`;
+// At most one banner at a time, in priority order
+function banner() {
+  const t = today(), cap = capacity(), b = budget(), nx = nextEvent(), endSoon = nowMin() >= tmin(S.settings.day.end) - 90;
+  const bn = (text, btns = '') => `<div class="bnr"><span>${text}</span>${btns}</div>`;
+  if (dev.closed === t) return bn('<b>Work is closed for today.</b> Rest is part of the work.', '<button class="link" data-act="reopen">Reopen</button>');
+  if (nx && nx.mins <= 45) return bn(`<b>Heads-up:</b> ${esc(nx.e.title)} at ${fmtT(nx.e.start)}, in ${nx.mins} min. ${nx.mins - nx.buffer > 0 ? `Start wrapping up in ~${nx.mins - nx.buffer} min.` : 'Time to get ready.'}`);
+  if (dev.basics === t) return bn('<b>Basics only today.</b> Body, essentials, and nothing that can wait. That\'s a full day.', '<button class="link" data-act="basicsOff">Normal day</button>');
+  if (!ui.welcomeDismissed && ui.gap >= 2) return bn('<b>Welcome back.</b> No catch-up needed. Everything rolled forward quietly.', '<button class="link" data-act="basicsOn">Ease in: basics only</button><button class="link" data-act="welcomeOk">Normal day</button>');
+  if (!ui.welcomeDismissed && cap.known && cap.n <= 1) return bn('<b>Low-capacity day?</b> Switching to basics is a smart move, not giving up.', '<button class="link" data-act="basicsOn">Basics only</button><button class="link" data-act="welcomeOk">I\'m OK</button>');
+  if (b.over) return bn(`<b>You've done enough for today.</b> Anything more is a bonus. I've stopped suggesting demanding things.`, '<button class="link" data-act="shutdown">Close the day</button>');
+  if (endSoon) return bn('<b>Day\'s nearly done.</b> Close it in 30 seconds and pick tomorrow\'s first step.', '<button class="link" data-act="shutdown">Close the day</button>');
   return '';
 }
 function sectTimeline() {
   const d = S.settings.day, a = tmin(d.start), z = Math.max(a + 60, tmin(d.end)), span = z - a;
-  const pc = m => Math.min(100, Math.max(0, (m - a) / span * 100)), nm = nowMin(), ev = eventsOn(today());
-  const segs = [['Morning', a, tmin(d.work), 'am'], ['Work', tmin(d.work), tmin(d.workEnd), 'mid'], ['Evening', tmin(d.workEnd), z, 'pm']];
-  const cur = blockNow();
-  return `<section class="tl" aria-label="Today's timeline">
-    <div class="tlbar">${segs.map(([l, s, e, c]) => `<div class="seg seg-${c}${c === cur ? ' cur' : ''}" style="left:${pc(s)}%;width:${pc(e) - pc(s)}%"><span>${l}</span></div>`).join('')}
+  const pc = m => Math.min(100, Math.max(0, (m - a) / span * 100)), nm = nowMin(), ev = eventsOn(today()), nx = nextEvent();
+  const segs = [['am', a, tmin(d.work)], ['mid', tmin(d.work), tmin(d.workEnd)], ['pm', tmin(d.workEnd), z]];
+  const cap = nx && nx.mins > 45 && nx.mins <= 240 ? `<p class="small mut" style="margin-top:6px">${esc(nx.e.title)} at ${fmtT(nx.e.start)}. About ${Math.max(0, nx.mins - nx.buffer)} min until you need to get ready. Suggestions above fit that gap.</p>` : '';
+  return `<h3>Your day</h3><section class="tl" aria-label="Today's timeline">
+    <div class="tlbar thin">${segs.map(([c, s, e]) => `<div class="seg seg-${c}" style="left:${pc(s)}%;width:${pc(e) - pc(s)}%"></div>`).join('')}
     ${ev.map(e => { const s = tmin(e.start), en = e.end ? tmin(e.end) : s + 60; return `<div class="ev" style="left:${pc(s)}%;width:${Math.max(2, pc(en) - pc(s))}%"></div>`; }).join('')}
     ${nm >= a && nm <= z ? `<div class="now" style="left:${pc(nm)}%" aria-label="Now"></div>` : ''}</div>
-    <div class="tlx mut small"><span>${fmtT(d.start)}</span><span>${fmtT(d.end)}</span></div>
+    <div class="tlx mut small"><span>Morning</span><span>Work</span><span>Evening</span></div>${cap}
     <div class="evlist">${ev.map(e => `<button class="evi${tmin(e.start) < nm ? ' past' : ''}" data-act="editEvent" data-id="${e.id}"><b>${fmtT(e.start)}</b> ${esc(e.title)}</button>`).join('')}<button class="evi add" data-act="newEvent">+ Fixed event</button></div></section>`;
-}
-function sectHeadsUp() {
-  const nx = nextEvent(); if (!nx) return '';
-  const { e, mins, buffer } = nx, wrap = mins - buffer;
-  if (mins <= 45) return `<section class="card warn"><p class="q">Heads-up: ${esc(e.title)} at ${fmtT(e.start)}, in ${mins} min.</p><p class="small">${wrap > 0 ? `Start wrapping up in about ${wrap} min.` : 'Time to start wrapping up and getting ready.'}</p></section>`;
-  if (mins <= 240) return `<section class="card soft"><p class="q">${esc(e.title)} at ${fmtT(e.start)}</p><p class="small mut">You have about ${Math.max(0, wrap)} minutes before you need to get ready. The suggestions below are things that fit, so the waiting doesn't eat your day.</p></section>`;
-  return '';
 }
 function sectNext(P) {
   const mode = dev.mode === 'three' ? 'three' : 'one';
-  let h = `<div class="modebar"><span class="mut small">How do you want to choose?</span><div class="seg2" role="group">
+  const bar = `<div class="modebar"><div class="seg2" role="group" aria-label="How to choose">
     <button class="${mode === 'one' ? 'on' : ''}" data-act="mode" data-v="one">Pick for me</button><button class="${mode === 'three' ? 'on' : ''}" data-act="mode" data-v="three">Show me 3</button></div></div>`;
   if (mode === 'three' && !ui.chosen && P.length) {
-    h += `<div class="opts">${P.slice(0, 3).map(it => `<button class="card opt" data-act="choose" data-id="${it.id}"><div class="t">${esc(it.title)}</div><div class="m">${metaTags(it)}</div>${it.why[0] ? `<p class="why">${esc(it.why[0])}</p>` : ''}<span class="go">Choose this →</span></button>`).join('')}</div>
-      <p class="mut small">None of these? That's fine. <button class="link" data-act="backlog">Something small from the backlog</button></p>`;
-    return h;
+    return `<div class="opts">${P.slice(0, 3).map(it => `<button class="card opt" data-act="choose" data-id="${it.id}"><div class="t">${esc(it.title)}</div><div class="m">${metaTags(it)}</div>${it.why[0] ? `<p class="why">${esc(it.why[0])}</p>` : ''}<span class="go">Choose this →</span></button>`).join('')}</div>
+      <p class="mut small">None of these? That's fine. <button class="link" data-act="backlog">Something small from the backlog</button></p>${bar}`;
   }
   const it = mode === 'three' && ui.chosen ? P.find(x => x.id === ui.chosen) || P[0] : P[0];
-  h += hero(it, mode === 'three' && !!ui.chosen);
+  let h = hero(it, mode === 'three' && !!ui.chosen) + bar;
   if (mode === 'one' && P.length > 1) {
     h += `<h3>Also in reach, if you'd like</h3><div class="list">${P.slice(1, 4).map(x => `<div class="item"><button class="tick" data-act="doneItem" data-kind="${x.kind}" data-id="${x.id}" aria-label="Mark done">✓</button>
       <button class="grow" data-act="openItem" data-kind="${x.kind}" data-id="${x.id}"><div class="t">${esc(x.title)}</div><div class="m">${x.area ? esc(areaName(x.area)) + ' · ' : ''}${x.size} min${x.why[0] ? ' · ' + esc(x.why[0]) : ''}</div></button></div>`).join('')}</div>`;
@@ -536,9 +665,11 @@ function hero(it, fromThree) {
   let btns;
   if (it.kind === 'task') btns = `<div class="chips"><span class="mut small">Sprint:</span>${[5, 10, 15].map(m => `<button class="btn sm${m === rec ? ' pri' : ''}" data-act="sprint" data-m="${m}" data-kind="task" data-id="${it.id}">▶ ${m}</button>`).join('')}<span class="mut small">min</span></div>
       <div class="row"><button class="btn" data-act="sprint" data-m="2" data-just="1" data-kind="task" data-id="${it.id}">Just 2 minutes</button><button class="btn" data-act="doneItem" data-kind="task" data-id="${it.id}">✓ Done</button>
-      <button class="btn ghost" data-act="notNow" data-kind="task" data-id="${it.id}">Not now</button><button class="btn ghost" data-act="steps" data-id="${it.id}">Smaller steps</button></div>`;
+      <button class="btn ghost" data-act="notNow" data-kind="task" data-id="${it.id}">Not now</button><button class="btn ghost" data-act="sticky" data-id="${it.id}">Feels stuck?</button></div>`;
   else if (it.kind === 'bill') btns = `<div class="row"><button class="btn pri" data-act="doneItem" data-kind="bill" data-id="${it.id}">✓ I've paid it</button><button class="btn ghost" data-act="notNow" data-kind="bill" data-id="${it.id}">Not now</button><button class="btn ghost" data-act="tab" data-v="money">Open money</button></div>`;
-  else if (it.kind === 'body') btns = `<div class="row"><button class="btn pri" data-act="doneItem" data-kind="body" data-id="${it.id}">✓ Done</button><button class="btn ghost" data-act="notNow" data-kind="body" data-id="${it.id}">Later</button></div>`;
+  else if (it.kind === 'body') btns = it.id === 'decomp'
+    ? `<div class="row"><button class="btn pri" data-act="decompStart">Start 10 quiet minutes</button><button class="btn ghost" data-act="notNow" data-kind="body" data-id="decomp">I'm fine, skip</button></div>`
+    : `<div class="row"><button class="btn pri" data-act="doneItem" data-kind="body" data-id="${it.id}">✓ Done</button><button class="btn ghost" data-act="notNow" data-kind="body" data-id="${it.id}">Later</button></div>`;
   else btns = `<div class="row"><button class="btn pri" data-act="doneItem" data-kind="chase" data-id="${it.id}">✓ I followed up</button><button class="btn" data-act="received" data-id="${it.id}">It arrived</button><button class="btn ghost" data-act="notNow" data-kind="chase" data-id="${it.id}">Not now</button></div>`;
   const stepsHtml = it.kind === 'task' && it.steps.length ? `<div>${it.steps.map(s => `<div class="step${s.done ? ' done' : ''}"><button class="tick${s.done ? ' done' : ''}" data-act="toggleStep" data-id="${it.id}" data-sid="${s.id}" aria-label="Toggle step">${s.done ? '✓' : ''}</button><span>${esc(s.t)}</span></div>`).join('')}</div>` : '';
   return `<section class="card hero"><div class="lbl">${fromThree ? 'You chose' : it.kind === 'body' ? 'First, your body' : 'An idea for now'}</div><div class="title">${esc(it.title)}</div><div>${metaTags(it)}</div>
@@ -574,7 +705,7 @@ function taskRow(k) {
 }
 function vPlan() {
   const t = today(), A = ui.area;
-  const tasks = live('tasks').filter(k => A === 'all' || k.area === A), open = tasks.filter(k => !k.done);
+  const tasks = live('tasks').filter(k => A === 'all' || k.area === A), open = tasks.filter(k => !k.done && !k.waiting), waiting = tasks.filter(k => !k.done && k.waiting);
   const grp = [['Now', k => k.due && k.due <= t], ['This week', k => k.due && k.due > t && k.due <= addD(t, 7)], ['Later', k => k.due && k.due > addD(t, 7)], ['Backlog (no date)', k => !k.due]];
   const byDue = (a, b) => (a.due || '').localeCompare(b.due || '') || (a.created || 0) - (b.created || 0);
   const done = tasks.filter(k => k.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0)).slice(0, 6);
@@ -584,6 +715,7 @@ function vPlan() {
   <div class="chips tight"><button class="chip${A === 'all' ? ' on' : ''}" data-act="areaFilter" data-v="all">All</button>${areaList().map(a => `<button class="chip${A === a.id ? ' on' : ''}" data-act="areaFilter" data-v="${a.id}"><span class="dotc" style="--c:${a.color}"></span>${esc(a.name)}</button>`).join('')}</div>
   <div class="row" style="margin:0 0 4px"><button class="btn pri" data-act="newTask">+ New task</button><button class="btn" data-act="newEvent">+ Fixed event</button></div>
   ${grp.map(([l, f]) => { const L = open.filter(f).sort(byDue); return L.length ? `<h3>${l} (${L.length})</h3><div class="list">${L.map(taskRow).join('')}</div>` : ''; }).join('') || '<p class="mut" style="margin-top:16px">Nothing here yet. Tap + New task, or drop thoughts in with the + button.</p>'}
+  ${waiting.length ? `<h3>Waiting for (${waiting.length})</h3><div class="list">${waiting.map(k => `<div class="item"><button class="tick" data-act="doneItem" data-kind="task" data-id="${k.id}" aria-label="Mark done"></button><button class="grow" data-act="editTask" data-id="${k.id}"><div class="t">${esc(k.title)}</div><div class="m">${k.waiting.who ? 'Waiting on ' + esc(k.waiting.who) + ' · ' : ''}check back ${nice(k.waiting.until).toLowerCase()}</div></button><button class="btn sm ghost" data-act="unwait" data-id="${k.id}">Not waiting</button></div>`).join('')}</div>` : ''}
   ${A === 'all' && ev.length ? `<h3>Fixed events, next 2 weeks</h3><div class="list">${ev.slice(0, 12).map(({ e, d }) => `<div class="item"><span class="dotc" style="--c:${areaColor(e.area)}"></span><button class="grow" data-act="editEvent" data-id="${e.id}"><div class="t">${esc(e.title)}</div><div class="m">${nice(d)} · ${fmtT(e.start)}${e.weekly ? ' · weekly' : ''}</div></button></div>`).join('')}</div>` : ''}
   ${done.length ? `<h3>Recently done</h3><div class="list">${done.map(taskRow).join('')}</div>` : ''}`;
 }
@@ -621,7 +753,7 @@ function vMoney() {
 }
 
 function vMore() {
-  const items = [['body', 'Body & cycle', 'Check-ins, cycle tracking, rough days'], ['boosts', 'Dopamine menu', 'Your quick pick-me-ups'], ['wins', 'Wins', 'Everything you got done'],
+  const items = [['body', 'Body & cycle', 'Check-ins, cycle tracking, rough days'], ['boosts', 'Dopamine menu', 'Your quick pick-me-ups'], ['shutdown', 'Close the day', 'Wins, tomorrow\'s first step, work off'], ['scripts', 'Message scripts', 'Words for awkward messages'], ['wins', 'Wins', 'Everything you got done'],
     ['reset', 'Weekly reset', 'Five-minute guided look at the week'], ['areas', 'Businesses & areas', 'Add, rename, pause'], ['settings', 'Settings', 'Your day, quiet hours, theme'],
     ['backup', 'Backup & Google Drive sync', 'Keep phone and desktop in step'], ['ics', 'Export deadline reminders (.ics)', 'Let your phone calendar do the nagging'], ['help', 'Install & tips', 'Put Steady on your home screen']];
   return `<header class="top"><h1>More</h1></header><div class="list menu">${items.map(([k, t, s]) => `<div class="item" data-act="more" data-v="${k}" tabindex="0" role="button"><div class="grow"><div class="t">${t}</div><div class="m">${s}</div></div><span class="mut">›</span></div>`).join('')}</div>`;
@@ -642,10 +774,18 @@ function bodySheet() {
       <div class="row"><button class="btn" data-act="periodToday">My period started today</button></div>
       ${field('Or log a past start date', bindIn('cycStart', F.cycStart, 'date'))}
       ${field('Typical cycle length (days); it adjusts as you log', bindIn('cycLen', F.cycLen, 'number', 'min="18" max="45" style="max-width:120px"'))}
-      ${starts.length ? `<p class="mut small" style="margin-top:10px">Logged starts: ${starts.map(s => nice(s)).join(', ')} <button class="link" data-act="undoPeriod">Remove latest</button></p>` : ''}` : ''}
-    <p class="mut small" style="margin-top:12px">Phases are estimates and everyone's pattern is different. This isn't medical advice.</p>
+      ${starts.length ? `<p class="mut small" style="margin-top:10px">Logged starts: ${starts.map(s => nice(s)).join(', ')} <button class="link" data-act="undoPeriod">Remove latest</button></p>` : ''}
+      <h3>Your own pattern</h3>${patternHtml()}
+      <details class="card" style="margin-top:12px"><summary>If the week before your period is really hard</summary><p class="small">If low mood, irritability or rage, hopelessness or not being able to function show up most months in the days before your period and ease once it starts, it's worth mentioning to a GP. This can be PMDD (premenstrual dysphoric disorder), which is more common in people with ADHD and is treatable. If you ever feel unsafe, contact local emergency services or a crisis line straight away.</p></details>` : ''}
+    <p class="mut small" style="margin-top:12px">Your check-in always overrides cycle estimates. Everyone's pattern is different. This isn't medical advice.</p>
     <div class="row"><button class="btn pri" data-act="saveBody">Save</button><button class="btn ghost" data-act="closeSheet">Close</button></div>`;
   });
+}
+function patternHtml() {
+  const pat = cyclePattern(), have = live('checks').filter(x => x.cday).length, starts = (S.settings.cycle.starts || []).length;
+  if (!pat) return `<p class="small mut">Steady is learning. After about 2–3 cycles of check-ins (${have}/20 check-ins, ${Math.max(0, starts - 1)}/2 full cycles so far) it will show what <i>your</i> cycle looks like, and use that instead of generic guesses.</p>`;
+  const rows = Object.keys(PHASES).filter(p => pat.avg[p] != null).map(p => `<div class="kv small"><span>${PHASES[p]}</span><span class="meter mini"><i style="width:${Math.round(pat.avg[p] / 3 * 100)}%"></i></span></div>`).join('');
+  return `<div class="card soft">${pat.dip ? `<p class="small"><b>Your capacity tends to dip in your ${esc(PHASES[pat.dip].toLowerCase())}.</b> Steady now plans lighter then, and only then.</p>` : '<p class="small"><b>No clear dip in your check-ins.</b> Steady won\'t lower expectations for any phase.</p>'}<div style="margin-top:8px">${rows}</div><p class="mut small" style="margin-top:6px">Based on ${pat.n} check-ins.</p></div>`;
 }
 function boostsSheet() {
   F = { boost: '' };
@@ -700,7 +840,7 @@ function areaForm(id, kind) {
 }
 function eventSheet(id) {
   const e = id ? S.events[id] : null;
-  F = e ? { ...e, _id: id } : { title: '', date: today(), start: '', end: '', area: '', buffer: 15, weekly: false };
+  F = e ? { people: true, ...e, _id: id } : { title: '', date: today(), start: '', end: '', area: '', buffer: 15, weekly: false, people: true };
   sheet(() => `<h2>${F._id ? 'Edit' : 'New'} fixed event</h2><p class="mut small">Appointments, calls, school runs: anything at a set time. Steady warns you beforehand and suggests what fits in the gap.</p>
     ${field('What is it?', bindIn('title', F.title, 'text', 'placeholder="e.g. Dentist, Client call" autocomplete="off"'))}
     ${field('Date', bindIn('date', F.date, 'date'))}
@@ -708,6 +848,7 @@ function eventSheet(id) {
     ${field('Minutes I need to get ready / travel', chips('buffer', [[5, '5'], [15, '15'], [30, '30'], [45, '45'], [60, '60']], F.buffer))}
     ${field('Area', chips('area', areaOpts(true), F.area))}
     ${check('weekly', F.weekly, 'Repeats every week')}
+    ${check('people', F.people, 'Involves people (suggests quiet time afterwards)')}
     <div class="row"><button class="btn pri" data-act="saveEvent">Save</button><button class="btn ghost" data-act="closeSheet">Cancel</button>${F._id ? '<button class="btn ghost danger" data-act="delEvent">Delete</button>' : ''}</div>`);
 }
 const dayF = d => ({ d_start: d.start, d_work: d.work, d_workEnd: d.workEnd, d_end: d.end });
@@ -1001,24 +1142,47 @@ const A = {
   tab(d) { ui.tab = d.v; window.scrollTo(0, 0); render(); },
   capture: captureSheet, closeSheet,
   chip(d) {
-    F[d.k] = ['size', 'buffer'].includes(d.k) ? +d.v : d.v;
+    if (d.k === 'why' && d.v === 'big') return stepsSheet(F._id);
+    F[d.k] = ['size', 'buffer', 'wait'].includes(d.k) ? +d.v : d.v;
     if (d.k === 'theme') { dev.theme = d.v; saveDev(); render(); }
     if (d.k === 'due' && !d.v) F.hard = false;
     rerender();
   },
   saveCap, voice: startVoice,
-  // body check
-  scan(d) { ui.scan[d.k] = ui.scan[d.k] === d.v ? undefined : d.v; render(); },
-  scanDone() { dev.scan = { d: today(), at: Date.now(), ...ui.scan }; ui.scan = {}; saveDev(); ui.welcomeDismissed = false; render(); toast('Thanks for checking in.'); },
-  scanSkip() { dev.scan = { d: today(), at: Date.now(), skip: true }; ui.scan = {}; saveDev(); render(); },
-  rescan() {
-    const prev = scanToday(); ui.scan = {};
-    if (prev) for (const [k] of SCANQ) if (prev[k] === 'y' || prev[k] === 'n' || prev[k] === 'ok' || prev[k] === 'low') ui.scan[k] = prev[k];
-    dev.scan = null; saveDev(); closeSheet(); ui.tab = 'today'; window.scrollTo(0, 0); render();
-  },
+  // body check (3 taps, optional)
+  checkin: checkinSheet,
+  scan(d) { ui.scan[d.k] = ui.scan[d.k] === d.v ? undefined : d.v; rerender(); },
+  scanDone() { saveScan(ui.scan); ui.scan = {}; ui.welcomeDismissed = false; closeSheet(); render(); toast('Thanks for checking in.'); },
+  scanSame() { saveScan(dev.lastScan || {}); closeSheet(); render(); toast('Same as last time. Noted.'); },
+  scanSkip() { if (!scanToday()) { dev.scan = { d: today(), at: Date.now(), skip: true }; saveDev(); } closeSheet(); render(); },
+  rescan() { closeSheet(); checkinSheet(); },
   basicsOn() { dev.basics = today(); ui.chosen = null; saveDev(); render(); toast('Basics only. That is a full day.'); },
   basicsOff() { dev.basics = ''; ui.welcomeDismissed = true; saveDev(); render(); },
   welcomeOk() { ui.welcomeDismissed = true; render(); },
+  // stuck tasks
+  sticky(d) { stickySheet(d.id); },
+  stickySave() {
+    const k = S.tasks[F._id]; if (!k) return closeSheet();
+    if (F.why === 'unclear') { if (!String(F.q || '').trim()) return toast('Write the question first'); k.first = 'Answer this: ' + F.q.trim(); }
+    if (F.why === 'boring') { k.quest = true; k.reward = (F.reward || '').trim(); }
+    if (F.why === 'scary') { k.people = true; k.first = k.first || 'Copy a script, change the [brackets], send'; }
+    if (F.why === 'waiting') { k.waiting = { who: (F.who || '').trim(), until: addD(today(), +F.wait || 3) }; }
+    k.slips = 0; put('tasks', k); closeSheet(); render();
+    toast({ unclear: 'Clearer now. Just answer that one question.', boring: 'Side quest unlocked.', scary: 'You have the words now. That\'s the hard part done.', waiting: 'Parked. I\'ll bring it back when it\'s time to check.' }[F.why] || 'Saved');
+  },
+  stickyDrop() { del('tasks', F._id); closeSheet(); render(); toast('Let go. That\'s a decision, not a failure.'); },
+  copyScript(d) {
+    const txt = SCRIPTS[+d.i][1];
+    (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => toast('Copied. Change the [brackets] and send.'), () => toast('Press and hold the text to copy it.'));
+  },
+  // pacing & recovery
+  decompStart() { dev.decompDone = Date.now(); saveDev(); win('Took quiet time to recover', ''); startTimer({ kind: 'boost', id: 'decomp', title: 'Quiet time. Low light, no screens if you can.', mins: 10, brk: true }); },
+  // evening close
+  shutdown: shutdownSheet,
+  sdNext() { F.sd++; resheet(); }, sdBack() { F.sd--; resheet(); },
+  sdClose() { saveFirstPick(); dev.closed = today(); saveDev(); closeSheet(); render(); toast('Work closed. See you tomorrow. Your first step is ready.'); },
+  sdKeep() { saveFirstPick(); closeSheet(); render(); toast('Tomorrow\'s first step is saved.'); },
+  reopen() { dev.closed = ''; saveDev(); render(); },
   mode(d) { dev.mode = d.v; ui.chosen = null; saveDev(); render(); },
   choose(d) { ui.chosen = d.id; render(); },
   unchoose() { ui.chosen = null; render(); },
@@ -1055,6 +1219,7 @@ const A = {
   },
   addTiny(d) { F.steps = (F.steps ? F.steps + '\n' : '') + d.v; resheet(); },
   areaFilter(d) { ui.area = d.v; render(); },
+  unwait(d) { const k = S.tasks[d.id]; k.waiting = null; put('tasks', k); render(); },
   triage(d) {
     const it = S.inbox[d.id]; if (!it) return;
     put('tasks', { id: uid(), created: Date.now(), done: false, title: it.text, area: F.area || '', size: +F.size || 10, energy: 'm', anchor: 'any', due: F.due || '', hard: !!F.hard && !!F.due, people: !!F.people, steps: [], first: '', notes: '', pin: false, repeat: null });
@@ -1068,7 +1233,7 @@ const A = {
   saveEvent() {
     if (!String(F.title || '').trim() || !F.start) return toast('Add a name and a start time');
     const old = F._id ? S.events[F._id] : null;
-    put('events', { ...(old || { id: uid() }), title: F.title.trim(), date: F.date || today(), start: F.start, end: F.end || '', area: F.area || '', buffer: +F.buffer || 15, weekly: !!F.weekly });
+    put('events', { ...(old || { id: uid() }), title: F.title.trim(), date: F.date || today(), start: F.start, end: F.end || '', area: F.area || '', buffer: +F.buffer || 15, weekly: !!F.weekly, people: !!F.people });
     closeSheet(); render(); toast('Saved. You\'ll get a heads-up beforehand.');
   },
   delEvent() { if (confirm('Delete this event?')) { del('events', F._id); closeSheet(); render(); } },
@@ -1098,7 +1263,7 @@ const A = {
     if (F.cycStart) c.starts = [...new Set([...(c.starts || []), F.cycStart])];
     setSettings({ cycle: c }); closeSheet(); render(); toast('Saved');
   },
-  more(d) { ({ body: bodySheet, boosts: boostsSheet, wins: winsSheet, reset: resetSheet, areas: areasSheet, settings: settingsSheet, backup: backupSheet, ics: exportIcs, help: helpSheet })[d.v](); },
+  more(d) { ({ body: bodySheet, boosts: boostsSheet, scripts: scriptsSheet, shutdown: shutdownSheet, wins: winsSheet, reset: resetSheet, areas: areasSheet, settings: settingsSheet, backup: backupSheet, ics: exportIcs, help: helpSheet })[d.v](); },
   rsNext() { F.rs++; resheet(); }, rsBack() { F.rs--; resheet(); },
   pinTask(d) {
     const k = S.tasks[d.id];
@@ -1142,7 +1307,10 @@ const A = {
     tm.paused = false; saveTimer(); $('#timer').dataset.paused = 'x'; drawTimer();
   },
   tmDone() { const t = tm; endTimer(); if (t && t.kind === 'task') complete('task', t.id); else render(); },
-  tmStop() { endTimer(); render(); },
+  tmStop() {
+    if (tm && tm.kind === 'task' && !tm.brk) { const m = Math.round((Date.now() - tm.started) / 60000), t = today(); dev.focus = { d: t, mins: (dev.focus && dev.focus.d === t ? dev.focus.mins : 0) + m }; saveDev(); }
+    endTimer(); render();
+  },
   tmBreak() { const g = tm.guard; startTimer({ kind: 'break', id: tm.id, title: 'Take a breather', mins: g ? 5 : 3, brk: true }); },
   tmBack() { endTimer(); render(); },
 };
