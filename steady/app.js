@@ -922,7 +922,8 @@ function vWizard() {
   const n = W.step;
   const body = [
     `<h1>Welcome to Steady</h1><p class="mut" style="margin:6px 0 10px">A calm place for work, home, money and body. The same shape every day, one small step at a time, and it never shames you. Setup takes about two minutes.</p>
-     ${field('What should I call you?', bindIn('name', W.name))}${field('Currency symbol', bindIn('cur', W.cur, 'text', 'maxlength="3" style="max-width:100px"'))}`,
+     ${field('What should I call you?', bindIn('name', W.name))}${field('Currency symbol', bindIn('cur', W.cur, 'text', 'maxlength="3" style="max-width:100px"'))}
+     <div class="bnr" style="margin-top:18px"><span>Already use Steady on another device?</span><button class="link" data-act="more" data-v="backup">Sync from Google Drive instead</button></div>`,
     `<h1>Your businesses</h1><p class="mut" style="margin:6px 0 10px">One per line. You can add, rename or pause them any time.</p>
      <textarea data-f="biz" style="min-height:160px" placeholder="Business one&#10;Business two&#10;Business three&#10;Business four">${esc(W.biz)}</textarea>`,
     `<h1>The shape of your day</h1><p class="mut" style="margin:6px 0 10px">These make the fixed frame you'll see every day: Morning, Work, Evening. Rough times are fine.</p>${dayFields(W)}`,
@@ -1128,7 +1129,8 @@ async function syncNow(interactive) {
       id = (await (await gfetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', { method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + b }, body: mp })).json()).id;
     }
     dev.fileId = id; dev.driveOk = true; dev.lastSync = Date.now(); saveDev(); SYNC.status = 'Synced ✓';
-    if (!sheetFn && !tm) render();
+    render();
+    if (interactive) toast('Synced. Your data is up to date.');
   } catch (e) { SYNC.status = 'Sync issue: ' + e.message; }
   finally { SYNC.busy = false; const h = $('#sheet h2'); if (sheetFn && h && /Backup/.test(h.textContent)) backupSheet(); }
 }
@@ -1287,7 +1289,7 @@ const A = {
   askNotify() { if (!('Notification' in window)) return toast('Not supported on this device'); Notification.requestPermission().then(p => toast(p === 'granted' ? 'Notifications on' : 'Notifications stay off')); },
   exportJson() { download(`steady-backup-${today()}.json`, 'application/json', JSON.stringify(S)); toast('Backup downloaded'); },
   importJson() { const f = $('#importFile'); f.onchange = () => { const r = new FileReader(); r.onload = () => { try { mergeIn(JSON.parse(r.result)); toast('Restored and merged'); closeSheet(); render(); } catch { toast('That file did not look right'); } }; if (f.files[0]) r.readAsText(f.files[0]); }; f.click(); },
-  driveConnect() { dev.clientId = (F.clientId || '').trim(); saveDev(); syncNow(true); },
+  driveConnect() { const el = $('[data-f=clientId]'); dev.clientId = (el ? el.value : F.clientId || '').trim(); saveDev(); syncNow(true); },
   driveOff() { dev.driveOk = false; dev.fileId = ''; saveDev(); SYNC.tok = null; SYNC.status = ''; backupSheet(); },
   installApp() { if (deferredInstall) { deferredInstall.prompt(); deferredInstall = null; closeSheet(); } },
   wizNext() { if (W.step < WSTEPS - 1) { W.step++; render(); window.scrollTo(0, 0); } else finishWizard(); },
@@ -1330,6 +1332,7 @@ const bindEvt = e => {
   if (t.dataset && t.dataset.r) { W.routines[t.dataset.r] = t.checked; return; }
   if (!k) return;
   const v = t.type === 'checkbox' ? t.checked : t.value;
+  if (k === 'clientId') { dev.clientId = v; F.clientId = v; return; }
   if (!S.settings.onboarded) { W[k] = v; if (k === 'cycOn' && e.type === 'change') render(); return; }
   F[k] = v;
   if (k === 'clientId') dev.clientId = v;
