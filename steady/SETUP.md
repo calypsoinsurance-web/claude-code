@@ -2,7 +2,22 @@
 
 Steady is a static web app (no build, no dependencies). Host the `steady/` folder anywhere that serves HTTPS, then "install" it on your phone and desktop.
 
-## 1. Host it under your own account (Netlify, free)
+## 1a. Recommended: public address with a login (Cloudflare, free)
+Do this on a computer.
+1. Create a free account at **dash.cloudflare.com**.
+2. **Workers & Pages → Create → Pages → Upload assets.** Name the project (e.g. `steady-sam`), drag in the unzipped folder, **Deploy**. You get `https://steady-sam.pages.dev`.
+3. **Zero Trust** (left menu; pick the Free plan if asked; no card is charged on Free) → **Access → Applications → Add an application → Self-hosted.**
+   - Application domain: `steady-sam.pages.dev`. Add a second domain `*.steady-sam.pages.dev` to cover preview links.
+   - Session duration: **1 month** (so you aren't asked to log in constantly).
+4. Add a policy: **Action: Allow → Include → Emails →** your email address. Save.
+5. Login method: the default **One-time PIN** (emails you a code). You can add **Google** under Zero Trust → Settings → Authentication instead.
+6. Open the address in a private window: you should see a Cloudflare login, then Steady.
+
+After logging in, install it as in step 2. If the login expires while you're offline, Steady still opens from its offline copy; you'll just log in again next time you're online.
+
+**Updating later:** Workers & Pages → your project → **Create deployment** → drag the new folder in.
+
+## 1b. Alternative: Netlify, no login (free)
 Do this on a computer (drag-and-drop doesn't work on a phone).
 1. Create a free account at netlify.com and log in.
 2. Go to **app.netlify.com/drop**.
