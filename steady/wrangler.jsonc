@@ -1,0 +1,7 @@
+// Cloudflare Workers config: deploys this folder as static files.
+// Connected via Workers Builds, so each push to the production branch goes live.
+{
+  "name": "steady-sam",
+  "compatibility_date": "2026-10-11",
+  "assets": { "directory": "." }
+}
