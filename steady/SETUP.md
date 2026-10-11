@@ -2,10 +2,19 @@
 
 Steady is a static web app (no build, no dependencies). Host the `steady/` folder anywhere that serves HTTPS, then "install" it on your phone and desktop.
 
-## 1. Host it (pick one, all free)
-- **Netlify Drop**: go to app.netlify.com/drop and drag the `steady` folder in. You get an https URL.
-- **Cloudflare Pages / GitHub Pages**: point at this folder.
-- **Quick local test**: `cd steady && python3 -m http.server 8123`, then open http://localhost:8123
+## 1. Host it under your own account (Netlify, free)
+Do this on a computer (drag-and-drop doesn't work on a phone).
+1. Create a free account at netlify.com and log in.
+2. Go to **app.netlify.com/drop**.
+3. Unzip `steady-app.zip` (or use this `steady` folder), then drag the **folder** onto the page.
+4. Netlify gives you an address like `https://random-words-123.netlify.app`. Open it to check it loads.
+5. Optional: in **Site configuration → Change site name**, pick something memorable but not guessable.
+
+The address is not listed anywhere, but anyone who has it can open the app (they'd see an empty Steady, never your data). Your tasks, money and cycle data live only on your devices and in your own Google Drive if you turn sync on. A password-protected site needs a paid Netlify plan.
+
+**Updating later:** in your site's **Deploys** tab, drag the new folder onto "Drag and drop your site output folder here". Same address, nothing lost.
+
+Quick local test instead: `cd steady && python3 -m http.server 8123`, then open http://localhost:8123
 
 ## 2. Install
 - **iPhone**: open the URL in Safari, then Share, then Add to Home Screen.
