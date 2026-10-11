@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Steady</title>
+<meta name="description" content="A calm daily tracker for work and life: one next thing at a time.">
+<meta name="theme-color" content="#3d6f68">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Steady">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<nav id="nav" aria-label="Main"></nav>
+<main id="view"></main>
+<button id="fab" data-act="capture" aria-label="Capture a thought">+</button>
+<div id="sheet" hidden></div>
+<div id="timer" hidden></div>
+<div id="toast" role="status" aria-live="polite"></div>
+<noscript>Steady needs JavaScript to run.</noscript>
+<script src="app.js"></script>
+</body>
+</html>

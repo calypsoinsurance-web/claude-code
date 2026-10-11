@@ -1,0 +1,17 @@
+{
+  "name": "Steady",
+  "short_name": "Steady",
+  "description": "A calm daily tracker for work and life: one next thing at a time.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f6f4ef",
+  "theme_color": "#3d6f68",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ],
+  "shortcuts": [{ "name": "Capture a thought", "url": "./?capture=1" }]
+}
